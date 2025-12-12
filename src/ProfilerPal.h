@@ -3,7 +3,7 @@
 
 #pragma once
 
-#ifndef WIN32
+#if !defined(_WIN32)
 #include <cstdlib>
 #include "pal_mstypes.h"
 #include "pal.h"

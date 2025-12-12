@@ -58,7 +58,12 @@ HRESULT STDMETHODCALLTYPE CorProfiler::Initialize(IUnknown *pICorProfilerInfoUnk
 
   GlobalStackManager()->SetCorProfilerInfo(this->corProfilerInfo);
 
-  DWORD eventMask = COR_PRF_MONITOR_ENTERLEAVE | COR_PRF_ENABLE_FUNCTION_ARGS | COR_PRF_ENABLE_FUNCTION_RETVAL | COR_PRF_ENABLE_FRAME_INFO;
+  DWORD eventMask =
+      COR_PRF_MONITOR_ENTERLEAVE |
+      COR_PRF_MONITOR_THREADS |
+      COR_PRF_ENABLE_FUNCTION_ARGS |
+      COR_PRF_ENABLE_FUNCTION_RETVAL |
+      COR_PRF_ENABLE_FRAME_INFO;
 
   auto hr = this->corProfilerInfo->SetEventMask(eventMask);
   if (hr != S_OK)
@@ -84,5 +89,30 @@ HRESULT STDMETHODCALLTYPE CorProfiler::Shutdown()
     this->corProfilerInfo = nullptr;
   }
 
+  return S_OK;
+}
+
+HRESULT STDMETHODCALLTYPE CorProfiler::ThreadCreated(ThreadID threadId)
+{
+  GlobalStackManager()->OnThreadCreated(threadId);
+  return S_OK;
+}
+
+HRESULT STDMETHODCALLTYPE CorProfiler::ThreadDestroyed(ThreadID threadId)
+{
+  GlobalStackManager()->OnThreadDestroyed(threadId);
+  return S_OK;
+}
+
+HRESULT STDMETHODCALLTYPE CorProfiler::ThreadAssignedToOSThread(ThreadID managedThreadId, DWORD osThreadId)
+{
+  GlobalStackManager()->OnThreadAssignedToOSThread(managedThreadId, osThreadId);
+  return S_OK;
+}
+
+HRESULT STDMETHODCALLTYPE CorProfiler::ThreadNameChanged(ThreadID threadId, ULONG cchName, WCHAR name[])
+{
+  (void)cchName;
+  GlobalStackManager()->OnThreadNameChanged(threadId, name);
   return S_OK;
 }

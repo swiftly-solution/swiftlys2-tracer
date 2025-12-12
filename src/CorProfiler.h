@@ -84,9 +84,9 @@ public:
   HRESULT STDMETHODCALLTYPE JITCachedFunctionSearchFinished(FunctionID functionId, COR_PRF_JIT_CACHE result) { return S_OK; };
   HRESULT STDMETHODCALLTYPE JITFunctionPitched(FunctionID functionId) { return S_OK; };
   HRESULT STDMETHODCALLTYPE JITInlining(FunctionID callerId, FunctionID calleeId, BOOL *pfShouldInline) { return S_OK; };
-  HRESULT STDMETHODCALLTYPE ThreadCreated(ThreadID threadId) { return S_OK; };
-  HRESULT STDMETHODCALLTYPE ThreadDestroyed(ThreadID threadId) { return S_OK; };
-  HRESULT STDMETHODCALLTYPE ThreadAssignedToOSThread(ThreadID managedThreadId, DWORD osThreadId) { return S_OK; };
+  HRESULT STDMETHODCALLTYPE ThreadCreated(ThreadID threadId) override;
+  HRESULT STDMETHODCALLTYPE ThreadDestroyed(ThreadID threadId) override;
+  HRESULT STDMETHODCALLTYPE ThreadAssignedToOSThread(ThreadID managedThreadId, DWORD osThreadId) override;
   HRESULT STDMETHODCALLTYPE RemotingClientInvocationStarted(void) { return S_OK; };
   HRESULT STDMETHODCALLTYPE RemotingClientSendingMessage(GUID *pCookie, BOOL fIsAsync) { return S_OK; };
   HRESULT STDMETHODCALLTYPE RemotingClientReceivingReply(GUID *pCookie, BOOL fIsAsync) { return S_OK; };
@@ -127,7 +127,7 @@ public:
   HRESULT STDMETHODCALLTYPE COMClassicVTableDestroyed(ClassID wrappedClassId, REFGUID implementedIID, void *pVTable) { return S_OK; };
   HRESULT STDMETHODCALLTYPE ExceptionCLRCatcherFound(void) { return S_OK; };
   HRESULT STDMETHODCALLTYPE ExceptionCLRCatcherExecute(void) { return S_OK; };
-  HRESULT STDMETHODCALLTYPE ThreadNameChanged(ThreadID threadId, ULONG cchName, WCHAR name[]) { return S_OK; };
+  HRESULT STDMETHODCALLTYPE ThreadNameChanged(ThreadID threadId, ULONG cchName, WCHAR name[]) override;
   HRESULT STDMETHODCALLTYPE GarbageCollectionStarted(int cGenerations, BOOL generationCollected[], COR_PRF_GC_REASON reason) { return S_OK; };
   HRESULT STDMETHODCALLTYPE SurvivingReferences(ULONG cSurvivingObjectIDRanges, ObjectID objectIDRangeStart[], ULONG cObjectIDRangeLength[]) { return S_OK; };
   HRESULT STDMETHODCALLTYPE GarbageCollectionFinished(void) { return S_OK; };

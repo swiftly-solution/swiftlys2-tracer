@@ -6,29 +6,13 @@
 #include <cstdint>
 #include <utility>
 #include <vector>
+#include <shared_mutex>
+#include <fstream>
 #include "Helper.h"
 #include "ParamReader.h"
 
 namespace
 {
-  struct ThreadStackState
-  {
-    std::vector<StackFrame> frames;
-    uint32_t desyncNotFound = 0;
-    uint32_t desyncFoundNotTop = 0;
-    uint32_t tailcallPops = 0;
-
-    void EnsureInit()
-    {
-      if (frames.capacity() == 0)
-      {
-        frames.reserve(256);
-      }
-    }
-  };
-
-  thread_local ThreadStackState g_tlsStack;
-
   struct ParamMeta
   {
     CorElementType elementType = ELEMENT_TYPE_END;
@@ -126,6 +110,35 @@ namespace
   }
 }
 
+size_t StackManager::BucketIndex(ThreadID tid) const
+{
+  return std::hash<ThreadID>{}(tid) % kThreadBuckets;
+}
+
+StackManager::ThreadStackState &StackManager::GetOrCreateThreadState(ThreadID tid)
+{
+  auto &bucket = m_threadBuckets[BucketIndex(tid)];
+
+  {
+    std::shared_lock lock(bucket.mutex);
+    auto it = bucket.stacks.find(tid);
+    if (it != bucket.stacks.end())
+      return *it->second;
+  }
+
+  {
+    std::unique_lock lock(bucket.mutex);
+    auto it = bucket.stacks.find(tid);
+    if (it != bucket.stacks.end())
+      return *it->second;
+
+    auto st = std::make_unique<ThreadStackState>();
+    st->EnsureInit();
+    auto &ref = *st;
+    bucket.stacks.emplace(tid, std::move(st));
+    return ref;
+  }
+}
 
 const FunctionInfo *StackManager::GetOrBuildFunctionInfo(FunctionIDOrClientID id, COR_PRF_ELT_INFO eltInfo)
 {
@@ -226,9 +239,9 @@ void StackManager::GetArgumentInfo(FunctionIDOrClientID id, COR_PRF_ELT_INFO elt
             case ELEMENT_TYPE_U:
               s = ReadParam<ELEMENT_TYPE_U>(m_corProfilerInfo, start);
               break;
-            case ELEMENT_TYPE_OBJECT:
-              s = ReadParam<ELEMENT_TYPE_OBJECT>(m_corProfilerInfo, start);
-              break;
+            // case ELEMENT_TYPE_OBJECT:
+            //   s = ReadParam<ELEMENT_TYPE_OBJECT>(m_corProfilerInfo, start);
+            //   break;
             case ELEMENT_TYPE_CLASS:
               s = ReadParam<ELEMENT_TYPE_CLASS>(m_corProfilerInfo, start);
               break;
@@ -258,17 +271,29 @@ void StackManager::GetArgumentInfo(FunctionIDOrClientID id, COR_PRF_ELT_INFO elt
 
 void StackManager::FunctionEnter(FunctionIDOrClientID id, COR_PRF_ELT_INFO eltInfo)
 {
+  if (m_corProfilerInfo == nullptr)
+    return;
+
+  ThreadID tid = 0;
+  if (FAILED(m_corProfilerInfo->GetCurrentThreadID(&tid)) || tid == 0)
+    return;
+
+  auto &state = GetOrCreateThreadState(tid);
+  std::lock_guard<std::mutex> guard(state.mutex);
+
   StackFrame stackFrame;
   stackFrame.functionId = id.functionID;
-
   stackFrame.functionInfo = GetOrBuildFunctionInfo(id, eltInfo);
 
-  GetArgumentInfo(id, eltInfo, stackFrame.argumentInfo);
+  // GetArgumentInfo(id, eltInfo, stackFrame.argumentInfo);
   
-  stackFrame.DebugPrint();
+  // stackFrame.DebugPrint();
 
-  g_tlsStack.EnsureInit();
-  g_tlsStack.frames.push_back(stackFrame);
+  state.EnsureInit();
+  state.frames.push_back(std::move(stackFrame));
+
+  // LOG_F(INFO, "FunctionEnter: %d, duration: %lld us", id.functionID, duration.count());
+  // Dump();
 
   // LOG_F(INFO, "FunctionEnter: %d", id.functionID);
 }
@@ -329,7 +354,17 @@ void StackManager::FunctionLeave(FunctionIDOrClientID id, COR_PRF_ELT_INFO eltIn
 {
   (void)eltInfo;
 
-  auto& frames = g_tlsStack.frames;
+  if (m_corProfilerInfo == nullptr)
+    return;
+
+  ThreadID tid = 0;
+  if (FAILED(m_corProfilerInfo->GetCurrentThreadID(&tid)) || tid == 0)
+    return;
+
+  auto &state = GetOrCreateThreadState(tid);
+  std::lock_guard<std::mutex> guard(state.mutex);
+
+  auto &frames = state.frames;
   if (frames.empty())
     return;
 
@@ -343,20 +378,20 @@ void StackManager::FunctionLeave(FunctionIDOrClientID id, COR_PRF_ELT_INFO eltIn
   {
     if (frames[i].functionId == id.functionID)
     {
-      g_tlsStack.desyncFoundNotTop++;
+      state.desyncFoundNotTop++;
       frames.resize(i);
-      if ((g_tlsStack.desyncFoundNotTop & 0x3FFu) == 0) 
+      if ((state.desyncFoundNotTop & 0x3FFu) == 0) 
       {
-        LOG_F(WARNING, "Leave desync repaired (count=%u)", g_tlsStack.desyncFoundNotTop);
+        LOG_F(WARNING, "Leave desync repaired (count=%u)", state.desyncFoundNotTop);
       }
       return;
     }
   }
 
-  g_tlsStack.desyncNotFound++;
-  if ((g_tlsStack.desyncNotFound & 0x3FFu) == 0) // every 1024 times
+  state.desyncNotFound++;
+  if ((state.desyncNotFound & 0x3FFu) == 0) // every 1024 times
   {
-    LOG_F(WARNING, "Leave desync not found (count=%u)", g_tlsStack.desyncNotFound);
+    LOG_F(WARNING, "Leave desync not found (count=%u)", state.desyncNotFound);
   }
 }
 
@@ -365,17 +400,117 @@ void StackManager::FunctionTailcall(FunctionIDOrClientID id, COR_PRF_ELT_INFO el
   (void)id;
   (void)eltInfo;
 
-  auto& frames = g_tlsStack.frames;
+  if (m_corProfilerInfo == nullptr)
+    return;
+
+  ThreadID tid = 0;
+  if (FAILED(m_corProfilerInfo->GetCurrentThreadID(&tid)) || tid == 0)
+    return;
+
+  auto &state = GetOrCreateThreadState(tid);
+  std::lock_guard<std::mutex> guard(state.mutex);
+
+  auto &frames = state.frames;
   if (frames.empty())
     return;
 
   frames.pop_back();
-  g_tlsStack.tailcallPops++;
+  state.tailcallPops++;
 }
 
 void StackManager::SetCorProfilerInfo(ICorProfilerInfo15 *corProfilerInfo)
 {
   m_corProfilerInfo = corProfilerInfo;
+}
+
+void StackManager::OnThreadCreated(ThreadID threadId)
+{
+  auto &state = GetOrCreateThreadState(threadId);
+  std::lock_guard<std::mutex> guard(state.mutex);
+  state.EnsureInit();
+}
+
+void StackManager::OnThreadDestroyed(ThreadID threadId)
+{
+  auto &bucket = m_threadBuckets[BucketIndex(threadId)];
+  std::unique_lock lock(bucket.mutex);
+  bucket.stacks.erase(threadId);
+}
+
+void StackManager::OnThreadAssignedToOSThread(ThreadID managedThreadId, DWORD osThreadId)
+{
+  auto &state = GetOrCreateThreadState(managedThreadId);
+  std::lock_guard<std::mutex> guard(state.mutex);
+  state.osThreadId = osThreadId;
+}
+
+void StackManager::OnThreadNameChanged(ThreadID threadId, const WCHAR *name)
+{
+  auto &state = GetOrCreateThreadState(threadId);
+  std::lock_guard<std::mutex> guard(state.mutex);
+  state.name = (name == nullptr) ? L"" : name;
+}
+
+std::vector<StackManager::ThreadStackSnapshot> StackManager::SnapshotAllStacks() const
+{
+  std::vector<ThreadStackSnapshot> out;
+
+  for (const auto &bucket : m_threadBuckets)
+  {
+    std::shared_lock bucketLock(bucket.mutex);
+    for (const auto &kv : bucket.stacks)
+    {
+      const ThreadID tid = kv.first;
+      const ThreadStackState *st = kv.second.get();
+      if (st == nullptr)
+        continue;
+
+      ThreadStackSnapshot snap;
+      snap.threadId = tid;
+
+      {
+        std::lock_guard<std::mutex> guard(st->mutex);
+        snap.osThreadId = st->osThreadId;
+        snap.nameUtf8 = WStrToUtf8(st->name.c_str());
+        snap.desyncNotFound = st->desyncNotFound;
+        snap.desyncFoundNotTop = st->desyncFoundNotTop;
+        snap.tailcallPops = st->tailcallPops;
+        snap.frames = st->frames;
+      }
+
+      out.push_back(std::move(snap));
+    }
+  }
+
+  return out;
+}
+
+void StackManager::Dump() const
+{
+  std::ofstream outFile("stack_dump.txt");
+  for (const auto &bucket : m_threadBuckets)
+  {
+    std::shared_lock bucketLock(bucket.mutex);
+    for (const auto &kv : bucket.stacks)
+    {
+      const ThreadID tid = kv.first;
+      const ThreadStackState *st = kv.second.get();
+      if (st == nullptr)
+        continue;
+      outFile << "Thread " << tid << ": " << WStrToUtf8(st->name.c_str()) << std::endl;
+      for (auto it = st->frames.rbegin(); it != st->frames.rend(); ++it)
+      {
+        const auto &frame = *it;
+
+        outFile << "  " << frame.functionInfo->methodSignature << std::endl;
+        for (const auto &arg : frame.argumentInfo)
+        {
+          outFile << "    " << arg << std::endl;
+        }
+        outFile << std::endl;
+      }
+    }
+  }
 }
 
 StackManager g_StackManager;
@@ -384,3 +519,4 @@ StackManager *GlobalStackManager()
 {
   return &g_StackManager;
 }
+

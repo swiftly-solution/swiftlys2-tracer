@@ -1,0 +1,20 @@
+Thread 5082448: 
+Thread 5690032: 
+  void System.Reflection.AssemblyName.ParseAsAssemblySpec(char* pAssemblyName, void* pAssemblySpec)
+    char* pAssemblyName = 1299427648
+    void* pAssemblySpec = 1300089600
+
+  System.Reflection.AssemblyNameParser+AssemblyNameParts System.Reflection.AssemblyNameParser.Parse(System.ReadOnlySpan<char> name)
+    System.ReadOnlySpan<char> name = <?>
+
+  bool System.Reflection.AssemblyNameParser.TryParse(System.Reflection.AssemblyNameParser+AssemblyNameParts& result)
+    System.Reflection.AssemblyNameParser+AssemblyNameParts& result = <?>
+
+  bool System.Reflection.AssemblyNameParser.TryGetNextToken(string& tokenString, System.Reflection.AssemblyNameParser+Token& token)
+    string& tokenString = <?>
+    System.Reflection.AssemblyNameParser+Token& token = <?>
+
+  bool System.Reflection.AssemblyNameParser.IsWhiteSpace(char ch)
+    char ch = s
+
+Thread 5012944: 
