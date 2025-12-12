@@ -1,0 +1,13 @@
+# Xmake cache
+.xmake/
+build/
+
+# MacOS Cache
+.DS_Store
+
+.vscode
+vendor/runtime
+DotnetTest/.vs
+DotnetTest/bin
+DotnetTest/obj
+vsxmake2022/
