@@ -382,7 +382,7 @@ void StackManager::FunctionLeave(FunctionIDOrClientID id, COR_PRF_ELT_INFO eltIn
       frames.resize(i);
       if ((state.desyncFoundNotTop & 0x3FFu) == 0) 
       {
-        LOG("WARNING: Leave desync repaired (count={})", state.desyncFoundNotTop);
+        LOG("WARNING: Leave desync repaired (count=%u)", state.desyncFoundNotTop);
       }
       return;
     }
@@ -391,7 +391,7 @@ void StackManager::FunctionLeave(FunctionIDOrClientID id, COR_PRF_ELT_INFO eltIn
   state.desyncNotFound++;
   if ((state.desyncNotFound & 0x3FFu) == 0) // every 1024 times
   {
-    LOG("WARNING: Leave desync not found (count={})", state.desyncNotFound);
+    LOG("WARNING: Leave desync not found (count=%u)", state.desyncNotFound);
   }
 }
 

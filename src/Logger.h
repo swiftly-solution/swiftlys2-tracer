@@ -1,10 +1,17 @@
 #pragma once
 
-#include <print>
-#include <format>
+#include <cstdarg>
+#include <cstdio>
 
-template <class... Args>
-constexpr void LOG(std::format_string<Args...> fmt, Args &&...args)
+inline void LOG(const char *fmt, ...)
 {
-  std::println("[SW2 TRACER] {}", std::format(fmt, std::forward<Args>(args)...));
-};
+  std::fputs("[SW2 TRACER] ", stdout);
+
+  va_list args;
+  va_start(args, fmt);
+  std::vfprintf(stdout, fmt, args);
+  va_end(args);
+
+  std::fputc('\n', stdout);
+  std::fflush(stdout);
+}

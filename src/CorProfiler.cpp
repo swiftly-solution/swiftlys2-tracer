@@ -68,14 +68,14 @@ HRESULT STDMETHODCALLTYPE CorProfiler::Initialize(IUnknown *pICorProfilerInfoUnk
   auto hr = this->corProfilerInfo->SetEventMask(eventMask);
   if (hr != S_OK)
   {
-    LOG("ERROR: Profiler SetEventMask failed (HRESULT: {})", hr);
+    LOG("ERROR: Profiler SetEventMask failed (HRESULT: 0x%08X)", (unsigned)hr);
   }
 
   hr = this->corProfilerInfo->SetEnterLeaveFunctionHooks3WithInfo(EnterNaked, LeaveNaked, TailcallNaked);
 
   if (hr != S_OK)
   {
-    LOG("ERROR: Profiler SetEnterLeaveFunctionHooks3WithInfo failed (HRESULT: %d)", hr);
+    LOG("ERROR: Profiler SetEnterLeaveFunctionHooks3WithInfo failed (HRESULT: 0x%08X)", (unsigned)hr);
   }
 
   return S_OK;
