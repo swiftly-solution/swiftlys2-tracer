@@ -5,7 +5,6 @@
 #include <codecvt>
 #include <locale>
 #include <vector>
-#include <print>
 #if defined(_WIN32)
 #ifndef NOMINMAX
 #define NOMINMAX
