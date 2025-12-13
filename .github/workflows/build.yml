@@ -6,21 +6,23 @@ on:
     tags: ["v*"]
   pull_request:
   workflow_dispatch:
+    inputs:
+      runtime_ref:
+        description: "dotnet/runtime git ref (branch/tag/sha) to fetch into vendor/runtime"
+        required: false
+        default: "main"
 
 permissions:
   contents: write
 
 jobs:
-  build:
-    name: ${{ matrix.os }} x64 release
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [windows-latest, ubuntu-latest]
+  build_windows:
+    name: Windows x64 release
+    runs-on: windows-latest
 
     env:
       DOTNET_PATH: ./vendor/runtime
+      RUNTIME_REF: ${{ github.event.inputs.runtime_ref || 'main' }}
 
     steps:
       - name: Checkout
@@ -28,32 +30,42 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Ensure vendor/runtime (sparse clone dotnet/runtime)
+        shell: pwsh
+        run: |
+          if (Test-Path "vendor/runtime") {
+            Write-Host "vendor/runtime already exists; skipping dotnet/runtime clone."
+            exit 0
+          }
+
+          New-Item -ItemType Directory -Force "vendor" | Out-Null
+          git clone --depth 1 --filter=blob:none --sparse --single-branch -b "$env:RUNTIME_REF" https://github.com/dotnet/runtime "vendor/runtime"
+          pushd "vendor/runtime"
+          git sparse-checkout set `
+            "src/coreclr/pal/prebuilt/inc" `
+            "src/coreclr/pal/inc" `
+            "src/coreclr/pal/inc/rt" `
+            "src/coreclr/inc" `
+            "src/coreclr" `
+            "src/native"
+          popd
+
       - name: Setup xmake
         uses: xmake-io/github-action-setup-xmake@v1
         with:
           xmake-version: latest
 
-      - name: Setup MSVC (Windows)
-        if: runner.os == 'Windows'
+      - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64
 
-      - name: Build (Windows)
-        if: runner.os == 'Windows'
+      - name: Build
         shell: pwsh
         run: |
           ./build.ps1
 
-      - name: Build (Linux)
-        if: runner.os == 'Linux'
-        shell: bash
-        run: |
-          chmod +x ./build.sh
-          ./build.sh
-
-      - name: Package (Windows)
-        if: runner.os == 'Windows'
+      - name: Package
         shell: pwsh
         run: |
           $outDir = "dist"
@@ -70,18 +82,84 @@ jobs:
           if (Test-Path $zip) { Remove-Item $zip -Force }
           Compress-Archive -Path "$outDir\*" -DestinationPath $zip
 
-      - name: Install zip (Linux)
-        if: runner.os == 'Linux'
-        shell: bash
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y zip
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sw2tracer-Windows-x64
+          path: sw2tracer-Windows-x64.zip
 
-      - name: Package (Linux)
-        if: runner.os == 'Linux'
+      - name: Upload to GitHub Release (tags only)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: sw2tracer-Windows-x64.zip
+
+  build_linux:
+    name: Linux x64 release (SteamRT Sniper)
+    runs-on: ubuntu-latest
+    container:
+      image: registry.gitlab.steamos.cloud/steamrt/sniper/sdk
+
+    env:
+      DOTNET_PATH: ./vendor/runtime
+      RUNTIME_REF: ${{ github.event.inputs.runtime_ref || 'main' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Ensure vendor/runtime (sparse clone dotnet/runtime)
         shell: bash
         run: |
           set -euo pipefail
+          if [ -d "vendor/runtime" ]; then
+            echo "vendor/runtime already exists; skipping dotnet/runtime clone."
+            exit 0
+          fi
+
+          mkdir -p vendor
+          git clone --depth 1 --filter=blob:none --sparse --single-branch -b "${RUNTIME_REF}" https://github.com/dotnet/runtime vendor/runtime
+          (cd vendor/runtime && git sparse-checkout set \
+            src/coreclr/pal/prebuilt/inc \
+            src/coreclr/pal/inc \
+            src/coreclr/pal/inc/rt \
+            src/coreclr/inc \
+            src/coreclr \
+            src/native)
+
+      - name: Setup xmake
+        uses: xmake-io/github-action-setup-xmake@v1
+        with:
+          xmake-version: latest
+
+      - name: Build
+        shell: bash
+        run: |
+          chmod +x ./build.sh
+          ./build.sh
+
+      - name: Package
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v zip >/dev/null 2>&1; then
+            if command -v apt-get >/dev/null 2>&1; then
+              apt-get update
+              apt-get install -y zip
+            elif command -v dnf >/dev/null 2>&1; then
+              dnf install -y zip
+            elif command -v yum >/dev/null 2>&1; then
+              yum install -y zip
+            elif command -v pacman >/dev/null 2>&1; then
+              pacman -Sy --noconfirm zip
+            else
+              echo "zip is required but no supported package manager was found in the container."
+              exit 1
+            fi
+          fi
+
           mkdir -p dist
           src="build/linux/x64/release"
           test -d "$src"
@@ -93,13 +171,13 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: sw2tracer-${{ runner.os }}-x64
-          path: sw2tracer-${{ runner.os }}-x64.zip
+          name: sw2tracer-Linux-x64
+          path: sw2tracer-Linux-x64.zip
 
       - name: Upload to GitHub Release (tags only)
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: sw2tracer-${{ runner.os }}-x64.zip
+          files: sw2tracer-Linux-x64.zip
 
 
