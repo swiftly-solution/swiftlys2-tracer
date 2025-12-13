@@ -1,12 +1,15 @@
 #pragma once
+
 #include <atomic>
-#include "loguru.hpp"
+#include "Helper.h"
+#include "Logger.h"
 #include "cor.h"
 #include "corprof.h"
 
 #ifndef _WIN32
 #include "specstrings_undef.h"
 #endif
+
 class CorProfiler : ICorProfilerCallback9
 {
 private:
@@ -31,7 +34,6 @@ public:
         riid == __uuidof(ICorProfilerCallback) ||
         riid == IID_IUnknown)
     {
-      LOG_F(INFO, "QueryInterface success: %d", riid);
       *ppvObject = this;
       this->AddRef();
       return S_OK;

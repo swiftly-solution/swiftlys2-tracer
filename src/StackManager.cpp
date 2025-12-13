@@ -1,5 +1,5 @@
 #include "StackManager.h"
-#include "loguru.hpp"
+#include "Logger.h"
 #include <string>
 #include <codecvt>
 #include <sstream>
@@ -382,7 +382,7 @@ void StackManager::FunctionLeave(FunctionIDOrClientID id, COR_PRF_ELT_INFO eltIn
       frames.resize(i);
       if ((state.desyncFoundNotTop & 0x3FFu) == 0) 
       {
-        LOG_F(WARNING, "Leave desync repaired (count=%u)", state.desyncFoundNotTop);
+        LOG("WARNING: Leave desync repaired (count={})", state.desyncFoundNotTop);
       }
       return;
     }
@@ -391,7 +391,7 @@ void StackManager::FunctionLeave(FunctionIDOrClientID id, COR_PRF_ELT_INFO eltIn
   state.desyncNotFound++;
   if ((state.desyncNotFound & 0x3FFu) == 0) // every 1024 times
   {
-    LOG_F(WARNING, "Leave desync not found (count=%u)", state.desyncNotFound);
+    LOG("WARNING: Leave desync not found (count={})", state.desyncNotFound);
   }
 }
 
@@ -448,7 +448,7 @@ void StackManager::OnThreadNameChanged(ThreadID threadId, const WCHAR *name)
 {
   auto &state = GetOrCreateThreadState(threadId);
   std::lock_guard<std::mutex> guard(state.mutex);
-  state.name = (name == nullptr) ? L"" : name;
+  state.name = WStrToUtf8(name);
 }
 
 std::vector<StackManager::ThreadStackSnapshot> StackManager::SnapshotAllStacks() const
@@ -471,7 +471,7 @@ std::vector<StackManager::ThreadStackSnapshot> StackManager::SnapshotAllStacks()
       {
         std::lock_guard<std::mutex> guard(st->mutex);
         snap.osThreadId = st->osThreadId;
-        snap.nameUtf8 = WStrToUtf8(st->name.c_str());
+        snap.nameUtf8 = st->name;
         snap.desyncNotFound = st->desyncNotFound;
         snap.desyncFoundNotTop = st->desyncFoundNotTop;
         snap.tailcallPops = st->tailcallPops;
@@ -485,9 +485,9 @@ std::vector<StackManager::ThreadStackSnapshot> StackManager::SnapshotAllStacks()
   return out;
 }
 
-void StackManager::Dump() const
+void StackManager::Dump(std::string path) const
 {
-  std::ofstream outFile("stack_dump.txt");
+  std::ofstream outFile(path);
   for (const auto &bucket : m_threadBuckets)
   {
     std::shared_lock bucketLock(bucket.mutex);
@@ -497,16 +497,18 @@ void StackManager::Dump() const
       const ThreadStackState *st = kv.second.get();
       if (st == nullptr)
         continue;
-      outFile << "Thread " << tid << ": " << WStrToUtf8(st->name.c_str()) << std::endl;
+      outFile << "Thread " << tid << ": " << st->name.c_str() << std::endl;
       for (auto it = st->frames.rbegin(); it != st->frames.rend(); ++it)
       {
         const auto &frame = *it;
 
-        outFile << "  " << frame.functionInfo->methodSignature << std::endl;
+        outFile << "    " << frame.functionInfo->methodSignature << std::endl;
         for (const auto &arg : frame.argumentInfo)
         {
           outFile << "    " << arg << std::endl;
         }
+        outFile << "        Assembly: " << frame.functionInfo->assemblyName << std::endl;
+        outFile << "        Module  : " << frame.functionInfo->moduleName << std::endl;
         outFile << std::endl;
       }
     }

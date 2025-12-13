@@ -1,4 +1,3 @@
 EXPORTS
     DllGetClassObject PRIVATE
     DllCanUnloadNow PRIVATE
-    TRACER_DUMP PRIVATE

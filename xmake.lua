@@ -26,11 +26,8 @@ target("sw2tracer")
         add_defines("HOST_AMD64")
     end
 
-    add_files("vendor/loguru/*.cpp")
-    add_includedirs("vendor/loguru")
-
     add_includedirs(path.join(DOTNET_PATH, "src/coreclr/pal/prebuilt/inc"))
-    if is_plat("linux") then 
+    if is_plat("linux") then
         add_includedirs(path.join(DOTNET_PATH, "src/coreclr/pal/inc"))
         add_includedirs(path.join(DOTNET_PATH, "src/coreclr/pal/inc/rt"))
     end

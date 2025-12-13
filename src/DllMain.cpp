@@ -1,13 +1,10 @@
 // Copyright (c) .NET Foundation and contributors. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
+#include "Guid.h"
 #include "ClassFactory.h"
 #include "StackManager.h"
-#include <loguru.hpp>
-
-const IID IID_IUnknown = {0x00000000, 0x0000, 0x0000, {0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46}};
-
-const IID IID_IClassFactory = {0x00000001, 0x0000, 0x0000, {0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46}};
+#include "Logger.h"
 
 const IID CLSID_CorProfiler = {0xa2648b53, 0xa560, 0x486c, {0x9e, 0x56, 0xc3, 0x92, 0x2a, 0x33, 0x01, 0x82}};
 
@@ -30,7 +27,7 @@ STDAPI DllGetClassObject(REFCLSID rclsid, REFIID riid, LPVOID *ppv)
         return E_FAIL;
     }
 
-    LOG_F(INFO, "Tracer Started");
+    LOG("Tracer Started");
 
 
     return factory->QueryInterface(riid, ppv);
@@ -39,9 +36,4 @@ STDAPI DllGetClassObject(REFCLSID rclsid, REFIID riid, LPVOID *ppv)
 STDAPI DllCanUnloadNow()
 {
     return S_OK;
-}
-
-EXTERN_C void TRACER_DUMP()
-{
-    GlobalStackManager()->Dump();
 }

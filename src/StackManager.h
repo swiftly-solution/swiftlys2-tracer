@@ -1,7 +1,6 @@
 #pragma once
 
-
-#include "loguru.hpp"
+#include "Logger.h"
 
 #include <memory>
 #include <mutex>
@@ -66,7 +65,7 @@ private:
     uint32_t desyncFoundNotTop = 0;
     uint32_t tailcallPops = 0;
     DWORD osThreadId = 0;
-    std::wstring name;
+    std::string name;
 
     void EnsureInit()
     {
@@ -116,7 +115,7 @@ public:
   };
 
   std::vector<ThreadStackSnapshot> SnapshotAllStacks() const;
-  void Dump() const;
+  void Dump(std::string path) const;
 };
 
 StackManager* GlobalStackManager();

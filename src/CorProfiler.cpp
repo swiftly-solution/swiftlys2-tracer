@@ -1,11 +1,11 @@
 #pragma once
+
 #include "CorProfiler.h"
 #include <atomic>
-#include <loguru.hpp>
+#include "Logger.h"
 
 #include "StackManager.h"
 #include <string>
-#include "unknwn.h"
 
 #include "corhlpr.h"
 #include "ProfilerPal.h"
@@ -68,14 +68,14 @@ HRESULT STDMETHODCALLTYPE CorProfiler::Initialize(IUnknown *pICorProfilerInfoUnk
   auto hr = this->corProfilerInfo->SetEventMask(eventMask);
   if (hr != S_OK)
   {
-    LOG_F(ERROR, "Profiler SetEventMask failed (HRESULT: %d)", hr);
+    LOG("ERROR: Profiler SetEventMask failed (HRESULT: {})", hr);
   }
 
   hr = this->corProfilerInfo->SetEnterLeaveFunctionHooks3WithInfo(EnterNaked, LeaveNaked, TailcallNaked);
 
   if (hr != S_OK)
   {
-    LOG_F(ERROR, "Profiler SetEnterLeaveFunctionHooks3WithInfo failed (HRESULT: %d)", hr);
+    LOG("ERROR: Profiler SetEnterLeaveFunctionHooks3WithInfo failed (HRESULT: %d)", hr);
   }
 
   return S_OK;

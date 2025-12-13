@@ -3,7 +3,7 @@
 
 #include "CorProfiler.h"
 #include "ClassFactory.h"
-#include "loguru.hpp"
+#include "Logger.h"
 
 ClassFactory::ClassFactory() : refCount(0)
 {
@@ -55,7 +55,7 @@ HRESULT STDMETHODCALLTYPE ClassFactory::CreateInstance(IUnknown *pUnkOuter, REFI
   {
     return E_FAIL;
   }
-  LOG_F(INFO, "CreateInstance success");
+  LOG("CreateInstance success");
 
   return profiler->QueryInterface(riid, ppvObject);
 }

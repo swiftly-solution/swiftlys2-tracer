@@ -15,14 +15,6 @@ EnterNaked PROC FRAME
     .PUSHREG RCX
     PUSH RDX
     .PUSHREG RDX
-    PUSH R8
-    .PUSHREG R8
-    PUSH R9
-    .PUSHREG R9
-    PUSH R10
-    .PUSHREG R10
-    PUSH R11
-    .PUSHREG R11
 
     SUB RSP, 20H
     .ALLOCSTACK 20H
@@ -33,10 +25,6 @@ EnterNaked PROC FRAME
 
     ADD RSP, 20H
 
-    POP R11
-    POP R10
-    POP R9
-    POP R8
     POP RDX
     POP RCX
     POP RAX
@@ -56,14 +44,6 @@ LeaveNaked PROC FRAME
     .PUSHREG RCX
     PUSH RDX
     .PUSHREG RDX
-    PUSH R8
-    .PUSHREG R8
-    PUSH R9
-    .PUSHREG R9
-    PUSH R10
-    .PUSHREG R10
-    PUSH R11
-    .PUSHREG R11
 
     SUB RSP, 20H
     .ALLOCSTACK 20H
@@ -74,10 +54,6 @@ LeaveNaked PROC FRAME
 
     ADD RSP, 20H
 
-    POP R11
-    POP R10
-    POP R9
-    POP R8
     POP RDX
     POP RCX
     POP RAX
@@ -97,14 +73,6 @@ TailcallNaked PROC FRAME
     .PUSHREG RCX
     PUSH RDX
     .PUSHREG RDX
-    PUSH R8
-    .PUSHREG R8
-    PUSH R9
-    .PUSHREG R9
-    PUSH R10
-    .PUSHREG R10
-    PUSH R11
-    .PUSHREG R11
 
     SUB RSP, 20H
     .ALLOCSTACK 20H
@@ -115,10 +83,6 @@ TailcallNaked PROC FRAME
 
     ADD RSP, 20H
 
-    POP R11
-    POP R10
-    POP R9
-    POP R8
     POP RDX
     POP RCX
     POP RAX
