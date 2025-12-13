@@ -5,6 +5,7 @@
 #include "ClassFactory.h"
 #include "StackManager.h"
 #include "Logger.h"
+#include "Exports.h"
 
 const IID CLSID_CorProfiler = {0xa2648b53, 0xa560, 0x486c, {0x9e, 0x56, 0xc3, 0x92, 0x2a, 0x33, 0x01, 0x82}};
 
