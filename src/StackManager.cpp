@@ -26,7 +26,7 @@ namespace
     std::vector<ParamMeta> parameters;
   };
 
-  static MethodParamMeta GetMethodParamMeta(ICorProfilerInfo15* pInfo, FunctionID functionId, COR_PRF_ELT_INFO eltInfo)
+  static MethodParamMeta GetMethodParamMeta(ICorProfilerInfo15 *pInfo, FunctionID functionId, COR_PRF_ELT_INFO eltInfo)
   {
     MethodParamMeta out;
     if (pInfo == nullptr)
@@ -42,7 +42,7 @@ namespace
     pInfo->GetFunctionInfo2(functionId, frameInfo, &classId, &moduleId, &tkMethod, 0, NULL, NULL);
 
     IMetaDataImport2 *pMetaDataImport = NULL;
-    if (FAILED(pInfo->GetModuleMetaData(moduleId, ofRead, IID_IMetaDataImport2, reinterpret_cast<IUnknown**>(&pMetaDataImport))) || pMetaDataImport == nullptr)
+    if (FAILED(pInfo->GetModuleMetaData(moduleId, ofRead, IID_IMetaDataImport2, reinterpret_cast<IUnknown **>(&pMetaDataImport))) || pMetaDataImport == nullptr)
       return out;
 
     mdTypeDef type;
@@ -161,7 +161,7 @@ const FunctionInfo *StackManager::GetOrBuildFunctionInfo(FunctionIDOrClientID id
       return it->second.get();
     }
     auto ptr = std::make_unique<FunctionInfo>(std::move(built));
-    const FunctionInfo* raw = ptr.get();
+    const FunctionInfo *raw = ptr.get();
     m_functionInfos.emplace(id.functionID, std::move(ptr));
     return raw;
   }
@@ -194,72 +194,72 @@ void StackManager::GetArgumentInfo(FunctionIDOrClientID id, COR_PRF_ELT_INFO elt
           std::string s = "<?>";
           switch (pm.elementType)
           {
-            case ELEMENT_TYPE_STRING:
-              s = ReadParam<ELEMENT_TYPE_STRING>(m_corProfilerInfo, start);
-              break;
-            case ELEMENT_TYPE_BOOLEAN:
-              s = ReadParam<ELEMENT_TYPE_BOOLEAN>(m_corProfilerInfo, start);
-              break;
-            case ELEMENT_TYPE_CHAR:
-              s = ReadParam<ELEMENT_TYPE_CHAR>(m_corProfilerInfo, start);
-              break;
-            case ELEMENT_TYPE_I1:
-              s = ReadParam<ELEMENT_TYPE_I1>(m_corProfilerInfo, start);
-              break;
-            case ELEMENT_TYPE_U1:
-              s = ReadParam<ELEMENT_TYPE_U1>(m_corProfilerInfo, start);
-              break;
-            case ELEMENT_TYPE_I2:
-              s = ReadParam<ELEMENT_TYPE_I2>(m_corProfilerInfo, start);
-              break;
-            case ELEMENT_TYPE_U2:
-              s = ReadParam<ELEMENT_TYPE_U2>(m_corProfilerInfo, start);
-              break;
-            case ELEMENT_TYPE_I4:
-              s = ReadParam<ELEMENT_TYPE_I4>(m_corProfilerInfo, start);
-              break;
-            case ELEMENT_TYPE_U4:
-              s = ReadParam<ELEMENT_TYPE_U4>(m_corProfilerInfo, start);
-              break;
-            case ELEMENT_TYPE_I8:
-              s = ReadParam<ELEMENT_TYPE_I8>(m_corProfilerInfo, start);
-              break;
-            case ELEMENT_TYPE_U8:
-              s = ReadParam<ELEMENT_TYPE_U8>(m_corProfilerInfo, start);
-              break;
-            case ELEMENT_TYPE_R4:
-              s = ReadParam<ELEMENT_TYPE_R4>(m_corProfilerInfo, start);
-              break;
-            case ELEMENT_TYPE_R8:
-              s = ReadParam<ELEMENT_TYPE_R8>(m_corProfilerInfo, start);
-              break;
-            case ELEMENT_TYPE_I:
-              s = ReadParam<ELEMENT_TYPE_I>(m_corProfilerInfo, start);
-              break;
-            case ELEMENT_TYPE_U:
-              s = ReadParam<ELEMENT_TYPE_U>(m_corProfilerInfo, start);
-              break;
-            // case ELEMENT_TYPE_OBJECT:
-            //   s = ReadParam<ELEMENT_TYPE_OBJECT>(m_corProfilerInfo, start);
-            //   break;
-            case ELEMENT_TYPE_CLASS:
-              s = ReadParam<ELEMENT_TYPE_CLASS>(m_corProfilerInfo, start);
-              break;
-            case ELEMENT_TYPE_SZARRAY:
-              s = ReadParam<ELEMENT_TYPE_SZARRAY>(m_corProfilerInfo, start);
-              break;
-            case ELEMENT_TYPE_ARRAY:
-              s = ReadParam<ELEMENT_TYPE_ARRAY>(m_corProfilerInfo, start);
-              break;
-            case ELEMENT_TYPE_PTR:
-              s = ReadParam<ELEMENT_TYPE_PTR>(m_corProfilerInfo, start);
-              break;
-            case ELEMENT_TYPE_VOID:
-              s = ReadParam<ELEMENT_TYPE_VOID>(m_corProfilerInfo, start);
-              break;
-            default:
-              s = "<?>";
-              break;
+          case ELEMENT_TYPE_STRING:
+            s = ReadParam<ELEMENT_TYPE_STRING>(m_corProfilerInfo, start);
+            break;
+          case ELEMENT_TYPE_BOOLEAN:
+            s = ReadParam<ELEMENT_TYPE_BOOLEAN>(m_corProfilerInfo, start);
+            break;
+          case ELEMENT_TYPE_CHAR:
+            s = ReadParam<ELEMENT_TYPE_CHAR>(m_corProfilerInfo, start);
+            break;
+          case ELEMENT_TYPE_I1:
+            s = ReadParam<ELEMENT_TYPE_I1>(m_corProfilerInfo, start);
+            break;
+          case ELEMENT_TYPE_U1:
+            s = ReadParam<ELEMENT_TYPE_U1>(m_corProfilerInfo, start);
+            break;
+          case ELEMENT_TYPE_I2:
+            s = ReadParam<ELEMENT_TYPE_I2>(m_corProfilerInfo, start);
+            break;
+          case ELEMENT_TYPE_U2:
+            s = ReadParam<ELEMENT_TYPE_U2>(m_corProfilerInfo, start);
+            break;
+          case ELEMENT_TYPE_I4:
+            s = ReadParam<ELEMENT_TYPE_I4>(m_corProfilerInfo, start);
+            break;
+          case ELEMENT_TYPE_U4:
+            s = ReadParam<ELEMENT_TYPE_U4>(m_corProfilerInfo, start);
+            break;
+          case ELEMENT_TYPE_I8:
+            s = ReadParam<ELEMENT_TYPE_I8>(m_corProfilerInfo, start);
+            break;
+          case ELEMENT_TYPE_U8:
+            s = ReadParam<ELEMENT_TYPE_U8>(m_corProfilerInfo, start);
+            break;
+          case ELEMENT_TYPE_R4:
+            s = ReadParam<ELEMENT_TYPE_R4>(m_corProfilerInfo, start);
+            break;
+          case ELEMENT_TYPE_R8:
+            s = ReadParam<ELEMENT_TYPE_R8>(m_corProfilerInfo, start);
+            break;
+          case ELEMENT_TYPE_I:
+            s = ReadParam<ELEMENT_TYPE_I>(m_corProfilerInfo, start);
+            break;
+          case ELEMENT_TYPE_U:
+            s = ReadParam<ELEMENT_TYPE_U>(m_corProfilerInfo, start);
+            break;
+          // case ELEMENT_TYPE_OBJECT:
+          //   s = ReadParam<ELEMENT_TYPE_OBJECT>(m_corProfilerInfo, start);
+          //   break;
+          case ELEMENT_TYPE_CLASS:
+            s = ReadParam<ELEMENT_TYPE_CLASS>(m_corProfilerInfo, start);
+            break;
+          case ELEMENT_TYPE_SZARRAY:
+            s = ReadParam<ELEMENT_TYPE_SZARRAY>(m_corProfilerInfo, start);
+            break;
+          case ELEMENT_TYPE_ARRAY:
+            s = ReadParam<ELEMENT_TYPE_ARRAY>(m_corProfilerInfo, start);
+            break;
+          case ELEMENT_TYPE_PTR:
+            s = ReadParam<ELEMENT_TYPE_PTR>(m_corProfilerInfo, start);
+            break;
+          case ELEMENT_TYPE_VOID:
+            s = ReadParam<ELEMENT_TYPE_VOID>(m_corProfilerInfo, start);
+            break;
+          default:
+            s = "<?>";
+            break;
           }
           const std::string &name = pm.name.empty() ? DefaultArgName(i) : pm.name;
           argumentInfo.push_back(pm.typeName + " " + name + " = " + s);
@@ -286,7 +286,7 @@ void StackManager::FunctionEnter(FunctionIDOrClientID id, COR_PRF_ELT_INFO eltIn
   stackFrame.functionInfo = GetOrBuildFunctionInfo(id, eltInfo);
 
   // GetArgumentInfo(id, eltInfo, stackFrame.argumentInfo);
-  
+
   // stackFrame.DebugPrint();
 
   state.EnsureInit();
@@ -380,7 +380,7 @@ void StackManager::FunctionLeave(FunctionIDOrClientID id, COR_PRF_ELT_INFO eltIn
     {
       state.desyncFoundNotTop++;
       frames.resize(i);
-      if ((state.desyncFoundNotTop & 0x3FFu) == 0) 
+      if ((state.desyncFoundNotTop & 0x3FFu) == 0)
       {
         LOG("WARNING: Leave desync repaired (count=%u)", state.desyncFoundNotTop);
       }
@@ -512,6 +512,11 @@ void StackManager::Dump(std::string path) const
         outFile << std::endl;
       }
     }
+    if (bucket.stacks.size() == 0)
+    {
+      outFile << "    No stacks" << std::endl;
+      outFile << std::endl;
+    }
   }
 }
 
@@ -521,4 +526,3 @@ StackManager *GlobalStackManager()
 {
   return &g_StackManager;
 }
-

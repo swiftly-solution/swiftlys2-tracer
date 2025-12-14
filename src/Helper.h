@@ -5,7 +5,6 @@
 #include <codecvt>
 #include <locale>
 #include <vector>
-#include <print>
 #if defined(_WIN32)
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -196,24 +195,42 @@ inline std::string ElementTypeName(CorElementType et)
 {
   switch (et)
   {
-  case ELEMENT_TYPE_VOID: return "void";
-  case ELEMENT_TYPE_BOOLEAN: return "bool";
-  case ELEMENT_TYPE_CHAR: return "char";
-  case ELEMENT_TYPE_I1: return "sbyte";
-  case ELEMENT_TYPE_U1: return "byte";
-  case ELEMENT_TYPE_I2: return "short";
-  case ELEMENT_TYPE_U2: return "ushort";
-  case ELEMENT_TYPE_I4: return "int";
-  case ELEMENT_TYPE_U4: return "uint";
-  case ELEMENT_TYPE_I8: return "long";
-  case ELEMENT_TYPE_U8: return "ulong";
-  case ELEMENT_TYPE_R4: return "float";
-  case ELEMENT_TYPE_R8: return "double";
-  case ELEMENT_TYPE_STRING: return "string";
-  case ELEMENT_TYPE_OBJECT: return "object";
-  case ELEMENT_TYPE_I: return "nint";
-  case ELEMENT_TYPE_U: return "nuint";
-  default: return "";
+  case ELEMENT_TYPE_VOID:
+    return "void";
+  case ELEMENT_TYPE_BOOLEAN:
+    return "bool";
+  case ELEMENT_TYPE_CHAR:
+    return "char";
+  case ELEMENT_TYPE_I1:
+    return "sbyte";
+  case ELEMENT_TYPE_U1:
+    return "byte";
+  case ELEMENT_TYPE_I2:
+    return "short";
+  case ELEMENT_TYPE_U2:
+    return "ushort";
+  case ELEMENT_TYPE_I4:
+    return "int";
+  case ELEMENT_TYPE_U4:
+    return "uint";
+  case ELEMENT_TYPE_I8:
+    return "long";
+  case ELEMENT_TYPE_U8:
+    return "ulong";
+  case ELEMENT_TYPE_R4:
+    return "float";
+  case ELEMENT_TYPE_R8:
+    return "double";
+  case ELEMENT_TYPE_STRING:
+    return "string";
+  case ELEMENT_TYPE_OBJECT:
+    return "object";
+  case ELEMENT_TYPE_I:
+    return "nint";
+  case ELEMENT_TYPE_U:
+    return "nuint";
+  default:
+    return "";
   }
 }
 
@@ -318,10 +335,14 @@ inline std::string ParseSigType(ICorProfilerInfo15 *pInfo, IMetaDataImport2 *pMe
     }
     return (et == ELEMENT_TYPE_MVAR ? "!!" : "!") + std::to_string(idx);
   }
-  case ELEMENT_TYPE_TYPEDBYREF: return "typedref";
-  case ELEMENT_TYPE_FNPTR: return "fnptr";
-  case ELEMENT_TYPE_PINNED: return ParseSigType(pInfo, pMetaDataImport, moduleId, typeArgs, typeArgsCount, pSig);
-  default: return "";
+  case ELEMENT_TYPE_TYPEDBYREF:
+    return "typedref";
+  case ELEMENT_TYPE_FNPTR:
+    return "fnptr";
+  case ELEMENT_TYPE_PINNED:
+    return ParseSigType(pInfo, pMetaDataImport, moduleId, typeArgs, typeArgsCount, pSig);
+  default:
+    return "";
   }
 }
 

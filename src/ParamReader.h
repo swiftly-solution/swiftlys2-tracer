@@ -98,7 +98,6 @@ static inline size_t ElementSizeBytes(ICorProfilerInfo15* pInfo, CorElementType 
         return 0;
       ULONG fieldCount = 0;
       ULONG classSize = 0;
-      // classSize is the value type instance size in bytes
       if (SUCCEEDED(pInfo->GetClassLayout(valueTypeClassId, nullptr, 0, &fieldCount, &classSize)) && classSize != 0)
         return (size_t)classSize;
       return 0;
@@ -111,7 +110,6 @@ static inline size_t ElementSizeBytes(ICorProfilerInfo15* pInfo, CorElementType 
 static inline std::string ReadParamDynamic(ICorProfilerInfo15* pInfo, CorElementType et, UINT_PTR start, int depth);
 static inline std::string ReadArrayParam(ICorProfilerInfo15* pInfo, UINT_PTR start, int depth)
 {
-  // array is a reference type; start points to the slot holding the ObjectID
   UINT_PTR objRef = *reinterpret_cast<const UINT_PTR*>(reinterpret_cast<const void*>(start));
   if (objRef == 0)
     return PR_NULL_VALUE;
@@ -135,7 +133,6 @@ static inline std::string ReadArrayParam(ICorProfilerInfo15* pInfo, UINT_PTR sta
   if (FAILED(pInfo->GetArrayObjectInfo(arrayObj, rank, dimSizes.data(), dimLoBounds.data(), &pElements)) || pElements == nullptr)
     return PR_UNKNOWN_VALUE;
 
-  // compute total length (cap to avoid overflow)
   std::uint64_t total = 1;
   for (ULONG i = 0; i < rank; i++)
   {
@@ -174,7 +171,6 @@ static inline std::string ReadArrayParam(ICorProfilerInfo15* pInfo, UINT_PTR sta
   size_t elemSize = ElementSizeBytes(pInfo, baseEt, baseClassId);
   if (elemSize == 0)
   {
-    // fallback: at least advance by pointer size for refs
     elemSize = sizeof(void*);
   }
 
@@ -194,7 +190,6 @@ static inline std::string ReadArrayParam(ICorProfilerInfo15* pInfo, UINT_PTR sta
 
 static inline std::string ReadParamDynamic(ICorProfilerInfo15* pInfo, CorElementType et, UINT_PTR start, int depth)
 {
-  // avoid runaway recursion for nested arrays
   if (depth > 2)
     return PR_UNKNOWN_VALUE;
 
@@ -401,7 +396,6 @@ std::string ReadParam<ELEMENT_TYPE_OBJECT>(ICorProfilerInfo15 *pInfo, UINT_PTR s
 template <>
 std::string ReadParam<ELEMENT_TYPE_CLASS>(ICorProfilerInfo15 *pInfo, UINT_PTR start)
 {
-  // For args, CLASS is also passed as an object reference
   return ReadParam<ELEMENT_TYPE_OBJECT>(pInfo, start);
 }
 
