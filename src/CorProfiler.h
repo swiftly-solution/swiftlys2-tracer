@@ -1,15 +1,14 @@
 #pragma once
 
+#ifndef _WIN32
+#include "specstrings_undef.h"
+#endif
 #include <atomic>
-#include <guiddef.h>
 #include "Helper.h"
 #include "Logger.h"
 #include "cor.h"
 #include "corprof.h"
 
-#ifndef _WIN32
-#include "specstrings_undef.h"
-#endif
 
 class CorProfiler : ICorProfilerCallback9
 {

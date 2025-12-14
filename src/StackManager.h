@@ -1,5 +1,9 @@
 #pragma once
 
+#ifndef _WIN32
+#include "specstrings_undef.h"
+#endif
+
 #include "Logger.h"
 
 #include <memory>
@@ -12,6 +16,7 @@
 #include <vector>
 #include "cor.h"
 #include "corprof.h"
+
 
 struct FunctionInfo
 {

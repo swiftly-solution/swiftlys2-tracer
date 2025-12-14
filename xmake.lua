@@ -22,6 +22,7 @@ target("sw2tracer")
 
     if is_plat("windows") then
         add_defines("WIN32")
+        add_defines("_WIN32")
     else 
         add_defines("HOST_AMD64")
     end

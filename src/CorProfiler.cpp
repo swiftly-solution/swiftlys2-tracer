@@ -1,4 +1,6 @@
-#pragma once
+#ifndef _WIN32
+#include "specstrings_undef.h"
+#endif
 
 #include "CorProfiler.h"
 #include <atomic>
@@ -10,9 +12,6 @@
 #include "corhlpr.h"
 #include "ProfilerPal.h"
 
-#ifndef _WIN32
-#include "specstrings_undef.h"
-#endif
 
 PROFILER_STUB EnterStub(FunctionIDOrClientID functionId, COR_PRF_ELT_INFO eltInfo)
 {

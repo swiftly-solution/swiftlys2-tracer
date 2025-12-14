@@ -1,3 +1,8 @@
+
+#ifndef _WIN32
+#include "specstrings_undef.h"
+#endif 
+
 #include "StackManager.h"
 #include "Logger.h"
 #include <string>
@@ -12,9 +17,6 @@
 #include "Helper.h"
 #include "ParamReader.h"
 
-#ifndef _WIN32
-#include "specstrings_undef.h"
-#endif
 
 namespace
 {

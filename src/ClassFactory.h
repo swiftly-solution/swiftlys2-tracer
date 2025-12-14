@@ -3,12 +3,12 @@
 
 #pragma once
 
-#include <atomic>
-#include "corhlpr.h"
-
 #ifndef _WIN32
 #include "specstrings_undef.h"
 #endif
+#include <atomic>
+#include "corhlpr.h"
+
 
 class ClassFactory : public IClassFactory
 {

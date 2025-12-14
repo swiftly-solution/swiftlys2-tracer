@@ -1,9 +1,13 @@
 // Copyright (c) .NET Foundation and contributors. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
+#ifndef _WIN32
+#include "specstrings_undef.h"
+#endif
 #include "CorProfiler.h"
 #include "ClassFactory.h"
 #include "Logger.h"
+
 
 ClassFactory::ClassFactory() : refCount(0)
 {
