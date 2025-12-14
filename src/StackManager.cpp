@@ -140,29 +140,29 @@ StackManager::ThreadStackState &StackManager::GetOrCreateThreadState(ThreadID ti
   }
 }
 
-const FunctionInfo *StackManager::GetOrBuildFunctionInfo(FunctionIDOrClientID id, COR_PRF_ELT_INFO eltInfo)
+const FunctionInfo *StackManager::GetOrBuildFunctionInfo(FunctionID id, COR_PRF_FRAME_INFO frameInfo)
 {
   {
     std::shared_lock lock(m_functionInfosMutex);
-    auto it = m_functionInfos.find(id.functionID);
+    auto it = m_functionInfos.find(id);
     if (it != m_functionInfos.end())
     {
       return it->second.get();
     }
   }
 
-  FunctionInfo built = BuildFunctionInfo(id, eltInfo);
+  FunctionInfo built = BuildFunctionInfo(id, frameInfo);
 
   {
     std::unique_lock lock(m_functionInfosMutex);
-    auto it = m_functionInfos.find(id.functionID);
+    auto it = m_functionInfos.find(id);
     if (it != m_functionInfos.end())
     {
       return it->second.get();
     }
     auto ptr = std::make_unique<FunctionInfo>(std::move(built));
     const FunctionInfo *raw = ptr.get();
-    m_functionInfos.emplace(id.functionID, std::move(ptr));
+    m_functionInfos.emplace(id, std::move(ptr));
     return raw;
   }
 }
@@ -283,7 +283,11 @@ void StackManager::FunctionEnter(FunctionIDOrClientID id, COR_PRF_ELT_INFO eltIn
 
   StackFrame stackFrame;
   stackFrame.functionId = id.functionID;
-  stackFrame.functionInfo = GetOrBuildFunctionInfo(id, eltInfo);
+
+  COR_PRF_FRAME_INFO frameInfo = NULL;
+  ULONG argumentInfoSize = 0;
+  m_corProfilerInfo->GetFunctionEnter3Info(id.functionID, eltInfo, &frameInfo, &argumentInfoSize, NULL);
+  stackFrame.functionInfo = GetOrBuildFunctionInfo(id.functionID, frameInfo);
 
   // GetArgumentInfo(id, eltInfo, stackFrame.argumentInfo);
 
@@ -298,14 +302,14 @@ void StackManager::FunctionEnter(FunctionIDOrClientID id, COR_PRF_ELT_INFO eltIn
   // LOG_F(INFO, "FunctionEnter: %d", id.functionID);
 }
 
-FunctionInfo StackManager::BuildFunctionInfo(FunctionIDOrClientID id, COR_PRF_ELT_INFO eltInfo)
+FunctionInfo StackManager::BuildFunctionInfo(FunctionID id, COR_PRF_FRAME_INFO frameInfo)
 {
   FunctionInfo info;
   ClassID classId;
   ModuleID moduleId;
   mdToken mdtokenFunction;
 
-  m_corProfilerInfo->GetFunctionInfo(id.functionID, &classId, &moduleId, &mdtokenFunction);
+  m_corProfilerInfo->GetFunctionInfo(id, &classId, &moduleId, &mdtokenFunction);
 
   LPCBYTE loadAddress;
   ULONG nameLen = 0;
@@ -333,11 +337,7 @@ FunctionInfo StackManager::BuildFunctionInfo(FunctionIDOrClientID id, COR_PRF_EL
 
   if (classId == 0)
   {
-    COR_PRF_FRAME_INFO frameInfo = NULL;
-    ULONG nbArgumentInfo = 0;
-
-    hr = m_corProfilerInfo->GetFunctionEnter3Info(id.functionID, eltInfo, &frameInfo, &nbArgumentInfo, NULL);
-    hr = m_corProfilerInfo->GetFunctionInfo2(id.functionID, frameInfo, &classId, &moduleId, &mdtokenFunction, 0, NULL, NULL);
+    hr = m_corProfilerInfo->GetFunctionInfo2(id, frameInfo, &classId, &moduleId, &mdtokenFunction, 0, NULL, NULL);
   }
 
   const ULONG bufferLen = 1024;
@@ -345,7 +345,7 @@ FunctionInfo StackManager::BuildFunctionInfo(FunctionIDOrClientID id, COR_PRF_EL
   GetTypeName(m_corProfilerInfo, NULL, classId, moduleId, pszName, bufferLen);
   info.typeName = WStrToUtf8(pszName);
 
-  std::string methodSignature = GetMethodSignature(m_corProfilerInfo, id.functionID, eltInfo, info.typeName);
+  std::string methodSignature = GetMethodSignature(m_corProfilerInfo, id, frameInfo, info.typeName);
   info.methodSignature = methodSignature;
   return info;
 }
@@ -418,9 +418,43 @@ void StackManager::FunctionTailcall(FunctionIDOrClientID id, COR_PRF_ELT_INFO el
   state.tailcallPops++;
 }
 
+void StackManager::OnUnmanagedToManaged(FunctionID functionId, COR_PRF_TRANSITION_REASON reason)
+{
+  (void)reason;
+
+  if (m_corProfilerInfo == nullptr)
+    return;
+
+  std::shared_lock lock(m_functionInfosMutex);
+
+  const FunctionInfo *info = nullptr;
+  auto it = m_functionInfos.find(functionId);
+  if (it != m_functionInfos.end())
+  {
+    info = it->second.get();
+  }
+  else
+  {
+    return;
+  }
+  lock.unlock();
+
+  auto now = std::chrono::steady_clock::now();
+
+  std::unique_lock lock2(m_unmanagedToManagedTransitionsMutex);
+  auto &record = m_unmanagedToManagedTransitions[functionId];
+  record.functionInfo = info;
+  record.lastTimestamp = now;
+}
+
 void StackManager::SetCorProfilerInfo(ICorProfilerInfo15 *corProfilerInfo)
 {
   m_corProfilerInfo = corProfilerInfo;
+}
+
+ICorProfilerInfo15 *StackManager::GetCorProfilerInfo()
+{
+  return m_corProfilerInfo;
 }
 
 void StackManager::OnThreadCreated(ThreadID threadId)
@@ -511,11 +545,37 @@ void StackManager::Dump(std::string path) const
         outFile << "        Module  : " << frame.functionInfo->moduleName << std::endl;
         outFile << std::endl;
       }
+      if (st->frames.size() == 0)
+      {
+        outFile << "    No frames" << std::endl;
+        outFile << std::endl;
+      }
     }
-    if (bucket.stacks.size() == 0)
+  }
+
+  outFile << "Unmanaged to managed transitions (last seen):" << std::endl;
+  auto now = std::chrono::steady_clock::now();
+  {
+    std::shared_lock lock(m_unmanagedToManagedTransitionsMutex);
+    if (m_unmanagedToManagedTransitions.empty())
     {
-      outFile << "    No stacks" << std::endl;
-      outFile << std::endl;
+      outFile << "    (none)" << std::endl;
+    }
+    else
+    {
+      for (const auto &kv : m_unmanagedToManagedTransitions)
+      {
+        const auto &record = kv.second;
+        if (record.functionInfo == nullptr || record.lastTimestamp.time_since_epoch().count() == 0)
+          continue;
+
+        auto age = std::chrono::duration_cast<std::chrono::nanoseconds>(now - record.lastTimestamp).count();
+        outFile << "    " << record.functionInfo->methodSignature << std::endl;
+        outFile << "        Assembly: " << record.functionInfo->assemblyName << std::endl;
+        outFile << "        Module  : " << record.functionInfo->moduleName << std::endl;
+        outFile << "        Age (ns): " << age << std::endl;
+        outFile << std::endl;
+      }
     }
   }
 }

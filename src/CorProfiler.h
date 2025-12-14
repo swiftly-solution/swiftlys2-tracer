@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <guiddef.h>
 #include "Helper.h"
 #include "Logger.h"
 #include "cor.h"
@@ -97,7 +98,7 @@ public:
   HRESULT STDMETHODCALLTYPE RemotingServerInvocationStarted(void) { return S_OK; };
   HRESULT STDMETHODCALLTYPE RemotingServerInvocationReturned(void) { return S_OK; };
   HRESULT STDMETHODCALLTYPE RemotingServerSendingReply(GUID *pCookie, BOOL fIsAsync) { return S_OK; };
-  HRESULT STDMETHODCALLTYPE UnmanagedToManagedTransition(FunctionID functionId, COR_PRF_TRANSITION_REASON reason) { return S_OK; };
+  HRESULT STDMETHODCALLTYPE UnmanagedToManagedTransition(FunctionID functionId, COR_PRF_TRANSITION_REASON reason) override;
   HRESULT STDMETHODCALLTYPE ManagedToUnmanagedTransition(FunctionID functionId, COR_PRF_TRANSITION_REASON reason) { return S_OK; };
   HRESULT STDMETHODCALLTYPE RuntimeSuspendStarted(COR_PRF_SUSPEND_REASON suspendReason) { return S_OK; };
   HRESULT STDMETHODCALLTYPE RuntimeSuspendFinished(void) { return S_OK; };

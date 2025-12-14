@@ -5,6 +5,7 @@
 #include <memory>
 #include <mutex>
 #include <array>
+#include <chrono>
 #include <shared_mutex>
 #include <string>
 #include <unordered_map>
@@ -56,6 +57,13 @@ private:
   std::unordered_map<FunctionID, std::unique_ptr<FunctionInfo>> m_functionInfos;
   mutable std::shared_mutex m_functionInfosMutex;
   ICorProfilerInfo15 *m_corProfilerInfo;
+  struct TransitionRecord
+  {
+    const FunctionInfo *functionInfo = nullptr;
+    std::chrono::steady_clock::time_point lastTimestamp{};
+  };
+  std::unordered_map<FunctionID, TransitionRecord> m_unmanagedToManagedTransitions;
+  mutable std::shared_mutex m_unmanagedToManagedTransitionsMutex;
 
   struct ThreadStackState
   {
@@ -88,15 +96,17 @@ private:
   size_t BucketIndex(ThreadID tid) const;
   ThreadStackState &GetOrCreateThreadState(ThreadID tid);
 
-  FunctionInfo BuildFunctionInfo(FunctionIDOrClientID id, COR_PRF_ELT_INFO eltInfo);
-  const FunctionInfo* GetOrBuildFunctionInfo(FunctionIDOrClientID id, COR_PRF_ELT_INFO eltInfo);
   void GetArgumentInfo(FunctionIDOrClientID id, COR_PRF_ELT_INFO eltInfo, std::vector<std::string>& argumentInfo);
 
 public:
+  FunctionInfo BuildFunctionInfo(FunctionID id, COR_PRF_FRAME_INFO frameInfo);
+  const FunctionInfo* GetOrBuildFunctionInfo(FunctionID id, COR_PRF_FRAME_INFO frameInfo);
   void FunctionEnter(FunctionIDOrClientID id, COR_PRF_ELT_INFO eltInfo);
   void FunctionLeave(FunctionIDOrClientID id, COR_PRF_ELT_INFO eltInfo);
   void FunctionTailcall(FunctionIDOrClientID id, COR_PRF_ELT_INFO eltInfo);
-  void SetCorProfilerInfo(ICorProfilerInfo15* corProfilerInfo);
+  void OnUnmanagedToManaged(FunctionID functionId, COR_PRF_TRANSITION_REASON reason);
+  void SetCorProfilerInfo(ICorProfilerInfo15 *corProfilerInfo);
+  ICorProfilerInfo15 *GetCorProfilerInfo();
 
   void OnThreadCreated(ThreadID threadId);
   void OnThreadDestroyed(ThreadID threadId);

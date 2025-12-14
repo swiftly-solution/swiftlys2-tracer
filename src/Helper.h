@@ -346,21 +346,16 @@ inline std::string ParseSigType(ICorProfilerInfo15 *pInfo, IMetaDataImport2 *pMe
   }
 }
 
-inline std::string GetMethodSignature(ICorProfilerInfo15 *pInfo, FunctionID functionId, COR_PRF_ELT_INFO eltInfo, const std::string &declaringTypeName)
+inline std::string GetMethodSignature(ICorProfilerInfo15 *pInfo, FunctionID functionId, COR_PRF_FRAME_INFO frameInfo, const std::string &declaringTypeName)
 {
   if (pInfo == nullptr)
     return "";
-
-  COR_PRF_FRAME_INFO frameInfo = NULL;
-  ULONG cbArgumentInfo = 0;
-  pInfo->GetFunctionEnter3Info(functionId, eltInfo, &frameInfo, &cbArgumentInfo, nullptr);
-
   ClassID classId = 0;
   ModuleID moduleId = 0;
   mdToken tkMethod = 0;
 
   ULONG32 typeArgsCount = 0;
-  pInfo->GetFunctionInfo2(functionId, frameInfo, &classId, &moduleId, &tkMethod, 0, &typeArgsCount, nullptr);
+  pInfo->GetFunctionInfo2(functionId, frameInfo, &classId, &moduleId, &tkMethod, 0, &typeArgsCount, NULL);
 
   std::vector<ClassID> typeArgs;
   if (typeArgsCount)

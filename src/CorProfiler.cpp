@@ -61,6 +61,7 @@ HRESULT STDMETHODCALLTYPE CorProfiler::Initialize(IUnknown *pICorProfilerInfoUnk
   DWORD eventMask =
       COR_PRF_MONITOR_ENTERLEAVE |
       COR_PRF_MONITOR_THREADS |
+      COR_PRF_MONITOR_CODE_TRANSITIONS |
       COR_PRF_ENABLE_FUNCTION_ARGS |
       COR_PRF_ENABLE_FUNCTION_RETVAL |
       COR_PRF_ENABLE_FRAME_INFO;
@@ -114,5 +115,11 @@ HRESULT STDMETHODCALLTYPE CorProfiler::ThreadNameChanged(ThreadID threadId, ULON
 {
   (void)cchName;
   GlobalStackManager()->OnThreadNameChanged(threadId, name);
+  return S_OK;
+}
+
+HRESULT STDMETHODCALLTYPE CorProfiler::UnmanagedToManagedTransition(FunctionID functionId, COR_PRF_TRANSITION_REASON reason)
+{
+  GlobalStackManager()->OnUnmanagedToManaged(functionId, reason);
   return S_OK;
 }

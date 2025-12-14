@@ -7,6 +7,7 @@
 #include "Logger.h"
 #include "Exports.h"
 
+// {a2648b53-a560-486c-9e56-c3922a330182}
 const IID CLSID_CorProfiler = {0xa2648b53, 0xa560, 0x486c, {0x9e, 0x56, 0xc3, 0x92, 0x2a, 0x33, 0x01, 0x82}};
 
 BOOL STDMETHODCALLTYPE DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserved)
@@ -16,7 +17,6 @@ BOOL STDMETHODCALLTYPE DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID
 
 STDAPI DllGetClassObject(REFCLSID rclsid, REFIID riid, LPVOID *ppv)
 {
-    // {a2648b53-a560-486c-9e56-c3922a330182}
     if (ppv == nullptr || rclsid != CLSID_CorProfiler)
     {
         return E_FAIL;
