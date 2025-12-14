@@ -8,8 +8,13 @@
 #include <vector>
 #include <shared_mutex>
 #include <fstream>
+#include <algorithm>
 #include "Helper.h"
 #include "ParamReader.h"
+
+#ifndef _WIN32
+#include "specstrings_undef.h"
+#endif
 
 namespace
 {
@@ -553,7 +558,7 @@ void StackManager::Dump(std::string path) const
     }
   }
 
-  outFile << "Unmanaged to managed transitions (last seen):" << std::endl;
+  outFile << "Recent 50 unmanaged to managed transitions (last seen):" << std::endl;
   auto now = std::chrono::steady_clock::now();
   {
     std::shared_lock lock(m_unmanagedToManagedTransitionsMutex);
@@ -563,7 +568,12 @@ void StackManager::Dump(std::string path) const
     }
     else
     {
-      for (const auto &kv : m_unmanagedToManagedTransitions)
+      std::vector<std::pair<FunctionID, TransitionRecord>> sortedTransitions(m_unmanagedToManagedTransitions.begin(), m_unmanagedToManagedTransitions.end());
+      std::sort(sortedTransitions.begin(), sortedTransitions.end(), [](const auto &a, const auto &b) {
+        return a.second.lastTimestamp > b.second.lastTimestamp;
+      });
+      sortedTransitions.resize(std::min<size_t>(sortedTransitions.size(), 50));
+      for (const auto &kv : sortedTransitions)
       {
         const auto &record = kv.second;
         if (record.functionInfo == nullptr || record.lastTimestamp.time_since_epoch().count() == 0)
