@@ -1,7 +1,7 @@
 
 #ifndef _WIN32
 #include "specstrings_undef.h"
-#endif 
+#endif
 
 #include "StackManager.h"
 #include "Logger.h"
@@ -17,14 +17,12 @@
 #include "Helper.h"
 #include "ParamReader.h"
 
-
 namespace
 {
   struct ParamMeta
   {
     CorElementType elementType = ELEMENT_TYPE_END;
-    std::string typeName;
-    std::string name;
+    std::string declarationPrefix;
   };
 
   struct MethodParamMeta
@@ -33,20 +31,25 @@ namespace
     std::vector<ParamMeta> parameters;
   };
 
-  static MethodParamMeta GetMethodParamMeta(ICorProfilerInfo15 *pInfo, FunctionID functionId, COR_PRF_ELT_INFO eltInfo)
+  static std::unordered_map<FunctionID, std::unique_ptr<MethodParamMeta>> g_methodParamMetaCache;
+  static std::shared_mutex g_methodParamMetaCacheMutex;
+
+  static std::string DefaultArgName(ULONG idx)
+  {
+    return "arg" + std::to_string(idx);
+  }
+
+  static MethodParamMeta BuildMethodParamMeta(ICorProfilerInfo15 *pInfo, FunctionID functionId, COR_PRF_FRAME_INFO frameInfo)
   {
     MethodParamMeta out;
     if (pInfo == nullptr)
       return out;
 
-    COR_PRF_FRAME_INFO frameInfo = NULL;
-    ULONG cbArgumentInfo = 0;
-    pInfo->GetFunctionEnter3Info(functionId, eltInfo, &frameInfo, &cbArgumentInfo, NULL);
-
     ClassID classId = 0;
     ModuleID moduleId = 0;
     mdToken tkMethod = 0;
-    pInfo->GetFunctionInfo2(functionId, frameInfo, &classId, &moduleId, &tkMethod, 0, NULL, NULL);
+    if (FAILED(pInfo->GetFunctionInfo2(functionId, frameInfo, &classId, &moduleId, &tkMethod, 0, NULL, NULL)))
+      return out;
 
     IMetaDataImport2 *pMetaDataImport = NULL;
     if (FAILED(pInfo->GetModuleMetaData(moduleId, ofRead, IID_IMetaDataImport2, reinterpret_cast<IUnknown **>(&pMetaDataImport))) || pMetaDataImport == nullptr)
@@ -56,12 +59,17 @@ namespace
     WCHAR name[260];
     ULONG size;
     ULONG attributes;
-    PCCOR_SIGNATURE pSig;
+    PCCOR_SIGNATURE pSig = nullptr;
     ULONG blobSize;
     ULONG codeRva;
     DWORD flags;
     auto hr = pMetaDataImport->GetMethodProps(
         tkMethod, &type, name, ARRAY_LEN(name) - 1, &size, &attributes, &pSig, &blobSize, &codeRva, &flags);
+    if (FAILED(hr) || pSig == nullptr)
+    {
+      pMetaDataImport->Release();
+      return out;
+    }
 
     ULONG callConv = 0;
     pSig += CorSigUncompressData(pSig, &callConv);
@@ -102,8 +110,9 @@ namespace
     {
       ParamMeta pm;
       pm.elementType = (CorElementType)*pWalk;
-      pm.typeName = ParseSigType(pInfo, pMetaDataImport, moduleId, nullptr, 0, pWalk);
-      pm.name = std::move(paramNames[i]);
+      std::string typeName = ParseSigType(pInfo, pMetaDataImport, moduleId, nullptr, 0, pWalk);
+      std::string nameForDisplay = paramNames[i].empty() ? DefaultArgName(i) : paramNames[i];
+      pm.declarationPrefix = typeName + " " + nameForDisplay + " = ";
       out.parameters.push_back(std::move(pm));
     }
 
@@ -111,9 +120,89 @@ namespace
     return out;
   }
 
-  static std::string DefaultArgName(ULONG idx)
+  static const MethodParamMeta *GetOrBuildMethodParamMeta(ICorProfilerInfo15 *pInfo, FunctionID functionId, COR_PRF_FRAME_INFO frameInfo)
   {
-    return "arg" + std::to_string(idx);
+    {
+      std::shared_lock lock(g_methodParamMetaCacheMutex);
+      auto it = g_methodParamMetaCache.find(functionId);
+      if (it != g_methodParamMetaCache.end())
+        return it->second.get();
+    }
+
+    MethodParamMeta built = BuildMethodParamMeta(pInfo, functionId, frameInfo);
+
+    {
+      std::unique_lock lock(g_methodParamMetaCacheMutex);
+      auto it = g_methodParamMetaCache.find(functionId);
+      if (it != g_methodParamMetaCache.end())
+        return it->second.get();
+
+      auto ptr = std::make_unique<MethodParamMeta>(std::move(built));
+      const MethodParamMeta *raw = ptr.get();
+      g_methodParamMetaCache.emplace(functionId, std::move(ptr));
+      return raw;
+    }
+  }
+
+  static const MethodParamMeta *TryGetCachedMethodParamMeta(FunctionID functionId)
+  {
+    std::shared_lock lock(g_methodParamMetaCacheMutex);
+    auto it = g_methodParamMetaCache.find(functionId);
+    if (it == g_methodParamMetaCache.end())
+      return nullptr;
+    return it->second.get();
+  }
+
+  static std::string ReadArgumentValue(ICorProfilerInfo15 *pInfo, CorElementType elementType, UINT_PTR start)
+  {
+    if (start == 0)
+      return "<?>";
+
+    switch (elementType)
+    {
+    case ELEMENT_TYPE_STRING:
+      return ReadParam<ELEMENT_TYPE_STRING>(pInfo, start);
+    case ELEMENT_TYPE_BOOLEAN:
+      return ReadParam<ELEMENT_TYPE_BOOLEAN>(pInfo, start);
+    case ELEMENT_TYPE_CHAR:
+      return ReadParam<ELEMENT_TYPE_CHAR>(pInfo, start);
+    case ELEMENT_TYPE_I1:
+      return ReadParam<ELEMENT_TYPE_I1>(pInfo, start);
+    case ELEMENT_TYPE_U1:
+      return ReadParam<ELEMENT_TYPE_U1>(pInfo, start);
+    case ELEMENT_TYPE_I2:
+      return ReadParam<ELEMENT_TYPE_I2>(pInfo, start);
+    case ELEMENT_TYPE_U2:
+      return ReadParam<ELEMENT_TYPE_U2>(pInfo, start);
+    case ELEMENT_TYPE_I4:
+      return ReadParam<ELEMENT_TYPE_I4>(pInfo, start);
+    case ELEMENT_TYPE_U4:
+      return ReadParam<ELEMENT_TYPE_U4>(pInfo, start);
+    case ELEMENT_TYPE_I8:
+      return ReadParam<ELEMENT_TYPE_I8>(pInfo, start);
+    case ELEMENT_TYPE_U8:
+      return ReadParam<ELEMENT_TYPE_U8>(pInfo, start);
+    case ELEMENT_TYPE_R4:
+      return ReadParam<ELEMENT_TYPE_R4>(pInfo, start);
+    case ELEMENT_TYPE_R8:
+      return ReadParam<ELEMENT_TYPE_R8>(pInfo, start);
+    case ELEMENT_TYPE_I:
+      return ReadParam<ELEMENT_TYPE_I>(pInfo, start);
+    case ELEMENT_TYPE_U:
+      return ReadParam<ELEMENT_TYPE_U>(pInfo, start);
+    case ELEMENT_TYPE_CLASS:
+      return ReadParam<ELEMENT_TYPE_CLASS>(pInfo, start);
+    case ELEMENT_TYPE_SZARRAY:
+      return ReadParam<ELEMENT_TYPE_SZARRAY>(pInfo, start);
+    case ELEMENT_TYPE_ARRAY:
+      return ReadParam<ELEMENT_TYPE_ARRAY>(pInfo, start);
+    case ELEMENT_TYPE_PTR:
+      return ReadParam<ELEMENT_TYPE_PTR>(pInfo, start);
+    case ELEMENT_TYPE_VOID:
+      return ReadParam<ELEMENT_TYPE_VOID>(pInfo, start);
+    default:
+      return "<?>";
+    }
   }
 }
 
@@ -124,27 +213,59 @@ size_t StackManager::BucketIndex(ThreadID tid) const
 
 StackManager::ThreadStackState &StackManager::GetOrCreateThreadState(ThreadID tid)
 {
+  thread_local ThreadID cachedTid = 0;
+  thread_local ThreadStackState *cachedState = nullptr;
+  if (cachedState != nullptr && cachedTid == tid)
+    return *cachedState;
+
   auto &bucket = m_threadBuckets[BucketIndex(tid)];
 
   {
     std::shared_lock lock(bucket.mutex);
     auto it = bucket.stacks.find(tid);
     if (it != bucket.stacks.end())
-      return *it->second;
+    {
+      cachedTid = tid;
+      cachedState = it->second.get();
+      return *cachedState;
+    }
   }
 
   {
     std::unique_lock lock(bucket.mutex);
     auto it = bucket.stacks.find(tid);
     if (it != bucket.stacks.end())
-      return *it->second;
+    {
+      cachedTid = tid;
+      cachedState = it->second.get();
+      return *cachedState;
+    }
 
     auto st = std::make_unique<ThreadStackState>();
     st->EnsureInit();
     auto &ref = *st;
     bucket.stacks.emplace(tid, std::move(st));
+    cachedTid = tid;
+    cachedState = &ref;
     return ref;
   }
+}
+
+StackManager::ThreadStackState *StackManager::GetCurrentThreadStateFast()
+{
+  if (m_corProfilerInfo == nullptr)
+    return nullptr;
+
+  thread_local ThreadStackState *cachedState = nullptr;
+  if (cachedState != nullptr)
+    return cachedState;
+
+  ThreadID tid = 0;
+  if (FAILED(m_corProfilerInfo->GetCurrentThreadID(&tid)) || tid == 0)
+    return nullptr;
+
+  cachedState = &GetOrCreateThreadState(tid);
+  return cachedState;
 }
 
 const FunctionInfo *StackManager::GetOrBuildFunctionInfo(FunctionID id, COR_PRF_FRAME_INFO frameInfo)
@@ -174,103 +295,49 @@ const FunctionInfo *StackManager::GetOrBuildFunctionInfo(FunctionID id, COR_PRF_
   }
 }
 
-void StackManager::GetArgumentInfo(FunctionIDOrClientID id, COR_PRF_ELT_INFO eltInfo, std::vector<std::string> &argumentInfo)
+void StackManager::GetArgumentInfo(FunctionIDOrClientID id, COR_PRF_ELT_INFO eltInfo, COR_PRF_FRAME_INFO frameInfo, ULONG argumentInfoSize, ArgumentStartsStorage &argumentStarts)
 {
-  COR_PRF_FRAME_INFO frameInfo = NULL;
-  ULONG argumentInfoSize = 0;
-  m_corProfilerInfo->GetFunctionEnter3Info(id.functionID, eltInfo, &frameInfo, &argumentInfoSize, NULL);
-  if (argumentInfoSize > 0)
+  if (GetTracerLevel() != 2 || m_corProfilerInfo == nullptr || argumentInfoSize == 0)
+    return;
+
+  thread_local FunctionID cachedMetaFunctionId = 0;
+  thread_local const MethodParamMeta *cachedMeta = nullptr;
+
+  const MethodParamMeta *meta = nullptr;
+  if (cachedMeta != nullptr && cachedMetaFunctionId == id.functionID)
   {
-    std::vector<std::byte> argBuf(argumentInfoSize);
-    if (SUCCEEDED(m_corProfilerInfo->GetFunctionEnter3Info(id.functionID, eltInfo, &frameInfo, &argumentInfoSize, reinterpret_cast<COR_PRF_FUNCTION_ARGUMENT_INFO *>(argBuf.data()))))
+    meta = cachedMeta;
+  }
+  else
+  {
+    meta = GetOrBuildMethodParamMeta(m_corProfilerInfo, id.functionID, frameInfo);
+    cachedMetaFunctionId = id.functionID;
+    cachedMeta = meta;
+  }
+
+  if (meta == nullptr || meta->parameters.empty())
+    return;
+
+  thread_local std::vector<std::byte> argBuf;
+  if (argBuf.size() < argumentInfoSize)
+    argBuf.resize(argumentInfoSize);
+
+  ULONG cbArgumentInfo = argumentInfoSize;
+  if (SUCCEEDED(m_corProfilerInfo->GetFunctionEnter3Info(id.functionID, eltInfo, &frameInfo, &cbArgumentInfo, reinterpret_cast<COR_PRF_FUNCTION_ARGUMENT_INFO *>(argBuf.data()))))
+  {
+    auto *pArgInfo = reinterpret_cast<COR_PRF_FUNCTION_ARGUMENT_INFO *>(argBuf.data());
+    ULONG hiddenThisOffset = meta->hasThis ? 1u : 0u;
+
+    if (pArgInfo != NULL && pArgInfo->numRanges > hiddenThisOffset)
     {
-      auto *pArgInfo = reinterpret_cast<COR_PRF_FUNCTION_ARGUMENT_INFO *>(argBuf.data());
-      MethodParamMeta meta = GetMethodParamMeta(m_corProfilerInfo, id.functionID, eltInfo);
-      ULONG hiddenThisOffset = meta.hasThis ? 1u : 0u;
+      const ULONG paramCount = static_cast<ULONG>(meta->parameters.size());
+      const ULONG available = pArgInfo->numRanges - hiddenThisOffset;
+      const ULONG captureCount = (std::min)(available, paramCount);
 
-      if (pArgInfo != NULL && pArgInfo->numRanges >= meta.parameters.size() + hiddenThisOffset)
+      argumentStarts.Reset(captureCount);
+      for (ULONG i = 0; i < captureCount; i++)
       {
-        for (ULONG i = 0; i < (ULONG)meta.parameters.size(); i++)
-        {
-          const auto &pm = meta.parameters[i];
-
-          UINT_PTR start = pArgInfo->ranges[i + hiddenThisOffset].startAddress;
-          if (start == 0)
-            continue;
-
-          std::string s = "<?>";
-          switch (pm.elementType)
-          {
-          case ELEMENT_TYPE_STRING:
-            s = ReadParam<ELEMENT_TYPE_STRING>(m_corProfilerInfo, start);
-            break;
-          case ELEMENT_TYPE_BOOLEAN:
-            s = ReadParam<ELEMENT_TYPE_BOOLEAN>(m_corProfilerInfo, start);
-            break;
-          case ELEMENT_TYPE_CHAR:
-            s = ReadParam<ELEMENT_TYPE_CHAR>(m_corProfilerInfo, start);
-            break;
-          case ELEMENT_TYPE_I1:
-            s = ReadParam<ELEMENT_TYPE_I1>(m_corProfilerInfo, start);
-            break;
-          case ELEMENT_TYPE_U1:
-            s = ReadParam<ELEMENT_TYPE_U1>(m_corProfilerInfo, start);
-            break;
-          case ELEMENT_TYPE_I2:
-            s = ReadParam<ELEMENT_TYPE_I2>(m_corProfilerInfo, start);
-            break;
-          case ELEMENT_TYPE_U2:
-            s = ReadParam<ELEMENT_TYPE_U2>(m_corProfilerInfo, start);
-            break;
-          case ELEMENT_TYPE_I4:
-            s = ReadParam<ELEMENT_TYPE_I4>(m_corProfilerInfo, start);
-            break;
-          case ELEMENT_TYPE_U4:
-            s = ReadParam<ELEMENT_TYPE_U4>(m_corProfilerInfo, start);
-            break;
-          case ELEMENT_TYPE_I8:
-            s = ReadParam<ELEMENT_TYPE_I8>(m_corProfilerInfo, start);
-            break;
-          case ELEMENT_TYPE_U8:
-            s = ReadParam<ELEMENT_TYPE_U8>(m_corProfilerInfo, start);
-            break;
-          case ELEMENT_TYPE_R4:
-            s = ReadParam<ELEMENT_TYPE_R4>(m_corProfilerInfo, start);
-            break;
-          case ELEMENT_TYPE_R8:
-            s = ReadParam<ELEMENT_TYPE_R8>(m_corProfilerInfo, start);
-            break;
-          case ELEMENT_TYPE_I:
-            s = ReadParam<ELEMENT_TYPE_I>(m_corProfilerInfo, start);
-            break;
-          case ELEMENT_TYPE_U:
-            s = ReadParam<ELEMENT_TYPE_U>(m_corProfilerInfo, start);
-            break;
-          // case ELEMENT_TYPE_OBJECT:
-          //   s = ReadParam<ELEMENT_TYPE_OBJECT>(m_corProfilerInfo, start);
-          //   break;
-          case ELEMENT_TYPE_CLASS:
-            s = ReadParam<ELEMENT_TYPE_CLASS>(m_corProfilerInfo, start);
-            break;
-          case ELEMENT_TYPE_SZARRAY:
-            s = ReadParam<ELEMENT_TYPE_SZARRAY>(m_corProfilerInfo, start);
-            break;
-          case ELEMENT_TYPE_ARRAY:
-            s = ReadParam<ELEMENT_TYPE_ARRAY>(m_corProfilerInfo, start);
-            break;
-          case ELEMENT_TYPE_PTR:
-            s = ReadParam<ELEMENT_TYPE_PTR>(m_corProfilerInfo, start);
-            break;
-          case ELEMENT_TYPE_VOID:
-            s = ReadParam<ELEMENT_TYPE_VOID>(m_corProfilerInfo, start);
-            break;
-          default:
-            s = "<?>";
-            break;
-          }
-          const std::string &name = pm.name.empty() ? DefaultArgName(i) : pm.name;
-          argumentInfo.push_back(pm.typeName + " " + name + " = " + s);
-        }
+        argumentStarts.Set(i, pArgInfo->ranges[i + hiddenThisOffset].startAddress);
       }
     }
   }
@@ -278,30 +345,28 @@ void StackManager::GetArgumentInfo(FunctionIDOrClientID id, COR_PRF_ELT_INFO elt
 
 void StackManager::FunctionEnter(FunctionIDOrClientID id, COR_PRF_ELT_INFO eltInfo)
 {
-  if (m_corProfilerInfo == nullptr)
+  ThreadStackState *state = GetCurrentThreadStateFast();
+  if (state == nullptr)
     return;
-
-  ThreadID tid = 0;
-  if (FAILED(m_corProfilerInfo->GetCurrentThreadID(&tid)) || tid == 0)
-    return;
-
-  auto &state = GetOrCreateThreadState(tid);
-  std::lock_guard<std::mutex> guard(state.mutex);
 
   StackFrame stackFrame;
   stackFrame.functionId = id.functionID;
 
   COR_PRF_FRAME_INFO frameInfo = NULL;
   ULONG argumentInfoSize = 0;
-  m_corProfilerInfo->GetFunctionEnter3Info(id.functionID, eltInfo, &frameInfo, &argumentInfoSize, NULL);
+  const bool captureArguments = (GetTracerLevel() == 2);
+  ULONG *argumentInfoSizePtr = captureArguments ? &argumentInfoSize : nullptr;
+  m_corProfilerInfo->GetFunctionEnter3Info(id.functionID, eltInfo, &frameInfo, argumentInfoSizePtr, NULL);
   stackFrame.functionInfo = GetOrBuildFunctionInfo(id.functionID, frameInfo);
 
-  // GetArgumentInfo(id, eltInfo, stackFrame.argumentInfo);
+  if (captureArguments)
+    GetArgumentInfo(id, eltInfo, frameInfo, argumentInfoSize, stackFrame.argumentStarts);
 
-  // stackFrame.DebugPrint();
-
-  state.EnsureInit();
-  state.frames.push_back(std::move(stackFrame));
+  {
+    std::lock_guard<std::mutex> guard(state->mutex);
+    state->EnsureInit();
+    state->frames.push_back(std::move(stackFrame));
+  }
 
   // LOG_F(INFO, "FunctionEnter: %d, duration: %lld us", id.functionID, duration.count());
   // Dump();
@@ -361,44 +426,42 @@ void StackManager::FunctionLeave(FunctionIDOrClientID id, COR_PRF_ELT_INFO eltIn
 {
   (void)eltInfo;
 
-  if (m_corProfilerInfo == nullptr)
+  ThreadStackState *state = GetCurrentThreadStateFast();
+  if (state == nullptr)
     return;
 
-  ThreadID tid = 0;
-  if (FAILED(m_corProfilerInfo->GetCurrentThreadID(&tid)) || tid == 0)
-    return;
+  std::lock_guard<std::mutex> guard(state->mutex);
 
-  auto &state = GetOrCreateThreadState(tid);
-  std::lock_guard<std::mutex> guard(state.mutex);
-
-  auto &frames = state.frames;
+  auto &frames = state->frames;
   if (frames.empty())
     return;
 
-  if (frames.back().functionId == id.functionID)
+  const FunctionID leaveFunctionId = id.functionID;
+
+  if (frames.back().functionId == leaveFunctionId)
   {
     frames.pop_back();
     return;
   }
 
-  for (size_t i = frames.size(); i-- > 0;)
+  for (size_t i = frames.size(); i > 0; --i)
   {
-    if (frames[i].functionId == id.functionID)
+    if (frames[i - 1].functionId == leaveFunctionId)
     {
-      state.desyncFoundNotTop++;
-      frames.resize(i);
-      if ((state.desyncFoundNotTop & 0x3FFu) == 0)
+      state->desyncFoundNotTop++;
+      frames.resize(i - 1);
+      if ((state->desyncFoundNotTop & 0x3FFu) == 0)
       {
-        LOG("WARNING: Leave desync repaired (count=%u)", state.desyncFoundNotTop);
+        LOG("WARNING: Leave desync repaired (count=%u)", state->desyncFoundNotTop);
       }
       return;
     }
   }
 
-  state.desyncNotFound++;
-  if ((state.desyncNotFound & 0x3FFu) == 0) // every 1024 times
+  state->desyncNotFound++;
+  if ((state->desyncNotFound & 0x3FFu) == 0) // every 1024 times
   {
-    LOG("WARNING: Leave desync not found (count=%u)", state.desyncNotFound);
+    LOG("WARNING: Leave desync not found (count=%u)", state->desyncNotFound);
   }
 }
 
@@ -407,22 +470,18 @@ void StackManager::FunctionTailcall(FunctionIDOrClientID id, COR_PRF_ELT_INFO el
   (void)id;
   (void)eltInfo;
 
-  if (m_corProfilerInfo == nullptr)
+  ThreadStackState *state = GetCurrentThreadStateFast();
+  if (state == nullptr)
     return;
 
-  ThreadID tid = 0;
-  if (FAILED(m_corProfilerInfo->GetCurrentThreadID(&tid)) || tid == 0)
-    return;
+  std::lock_guard<std::mutex> guard(state->mutex);
 
-  auto &state = GetOrCreateThreadState(tid);
-  std::lock_guard<std::mutex> guard(state.mutex);
-
-  auto &frames = state.frames;
+  auto &frames = state->frames;
   if (frames.empty())
     return;
 
   frames.pop_back();
-  state.tailcallPops++;
+  state->tailcallPops++;
 }
 
 void StackManager::OnUnmanagedToManaged(FunctionID functionId, COR_PRF_TRANSITION_REASON reason)
@@ -462,6 +521,18 @@ void StackManager::SetCorProfilerInfo(ICorProfilerInfo15 *corProfilerInfo)
 ICorProfilerInfo15 *StackManager::GetCorProfilerInfo()
 {
   return m_corProfilerInfo;
+}
+
+void StackManager::SetTracerLevel(int level)
+{
+  if (level < 0)
+    level = 0;
+  m_tracerLevel.store(level, std::memory_order_relaxed);
+}
+
+int StackManager::GetTracerLevel() const
+{
+  return m_tracerLevel.load(std::memory_order_relaxed);
 }
 
 void StackManager::OnThreadCreated(ThreadID threadId)
@@ -529,66 +600,75 @@ std::vector<StackManager::ThreadStackSnapshot> StackManager::SnapshotAllStacks()
 void StackManager::Dump(std::string path) const
 {
   std::ofstream outFile(path);
-  for (const auto &bucket : m_threadBuckets)
-  {
-    std::shared_lock bucketLock(bucket.mutex);
-    for (const auto &kv : bucket.stacks)
-    {
-      const ThreadID tid = kv.first;
-      const ThreadStackState *st = kv.second.get();
-      if (st == nullptr)
-        continue;
-      outFile << "Thread " << tid << ": " << st->name.c_str() << std::endl;
-      for (auto it = st->frames.rbegin(); it != st->frames.rend(); ++it)
-      {
-        const auto &frame = *it;
+  if (!outFile.is_open())
+    return;
 
-        outFile << "    " << frame.functionInfo->methodSignature << std::endl;
-        for (const auto &arg : frame.argumentInfo)
-        {
-          outFile << "    " << arg << std::endl;
-        }
-        outFile << "        Assembly: " << frame.functionInfo->assemblyName << std::endl;
-        outFile << "        Module  : " << frame.functionInfo->moduleName << std::endl;
-        outFile << std::endl;
-      }
-      if (st->frames.size() == 0)
+  const auto snapshots = SnapshotAllStacks();
+  for (const auto &snapshot : snapshots)
+  {
+    outFile << "Thread " << snapshot.threadId << ": " << snapshot.nameUtf8 << std::endl;
+    for (auto it = snapshot.frames.rbegin(); it != snapshot.frames.rend(); ++it)
+    {
+      const auto &frame = *it;
+      if (frame.functionInfo == nullptr)
+        continue;
+
+      outFile << "    " << frame.functionInfo->methodSignature << std::endl;
+      const MethodParamMeta *meta = TryGetCachedMethodParamMeta(frame.functionId);
+      if (meta != nullptr && !frame.argumentStarts.Empty())
       {
-        outFile << "    No frames" << std::endl;
-        outFile << std::endl;
+        const size_t count = (std::min)(meta->parameters.size(), frame.argumentStarts.Size());
+        for (size_t i = 0; i < count; i++)
+        {
+          UINT_PTR start = frame.argumentStarts.Get(i);
+          if (start == 0)
+            continue;
+
+          const auto &pm = meta->parameters[i];
+          std::string value = ReadArgumentValue(m_corProfilerInfo, pm.elementType, start);
+          outFile << "    " << pm.declarationPrefix << value << std::endl;
+        }
       }
+      outFile << "        Assembly: " << frame.functionInfo->assemblyName << std::endl;
+      outFile << "        Module  : " << frame.functionInfo->moduleName << std::endl;
+      outFile << std::endl;
+    }
+    if (snapshot.frames.empty())
+    {
+      outFile << "    No frames" << std::endl;
+      outFile << std::endl;
     }
   }
 
   outFile << "Recent 50 unmanaged to managed transitions (last seen):" << std::endl;
   auto now = std::chrono::steady_clock::now();
+  std::vector<std::pair<FunctionID, TransitionRecord>> sortedTransitions;
   {
     std::shared_lock lock(m_unmanagedToManagedTransitionsMutex);
-    if (m_unmanagedToManagedTransitions.empty())
-    {
-      outFile << "    (none)" << std::endl;
-    }
-    else
-    {
-      std::vector<std::pair<FunctionID, TransitionRecord>> sortedTransitions(m_unmanagedToManagedTransitions.begin(), m_unmanagedToManagedTransitions.end());
-      std::sort(sortedTransitions.begin(), sortedTransitions.end(), [](const auto &a, const auto &b) {
-        return a.second.lastTimestamp > b.second.lastTimestamp;
-      });
-      sortedTransitions.resize(std::min<size_t>(sortedTransitions.size(), 50));
-      for (const auto &kv : sortedTransitions)
-      {
-        const auto &record = kv.second;
-        if (record.functionInfo == nullptr || record.lastTimestamp.time_since_epoch().count() == 0)
-          continue;
+    sortedTransitions.assign(m_unmanagedToManagedTransitions.begin(), m_unmanagedToManagedTransitions.end());
+  }
 
-        auto age = std::chrono::duration_cast<std::chrono::nanoseconds>(now - record.lastTimestamp).count();
-        outFile << "    " << record.functionInfo->methodSignature << std::endl;
-        outFile << "        Assembly: " << record.functionInfo->assemblyName << std::endl;
-        outFile << "        Module  : " << record.functionInfo->moduleName << std::endl;
-        outFile << "        Age (ns): " << age << std::endl;
-        outFile << std::endl;
-      }
-    }
+  if (sortedTransitions.empty())
+  {
+    outFile << "    (none)" << std::endl;
+    return;
+  }
+
+  std::sort(sortedTransitions.begin(), sortedTransitions.end(), [](const auto &a, const auto &b)
+            { return a.second.lastTimestamp > b.second.lastTimestamp; });
+  sortedTransitions.resize(std::min<size_t>(sortedTransitions.size(), 50));
+  for (const auto &kv : sortedTransitions)
+  {
+    const auto &record = kv.second;
+    if (record.functionInfo == nullptr || record.lastTimestamp.time_since_epoch().count() == 0)
+      continue;
+
+    auto age = std::chrono::duration_cast<std::chrono::nanoseconds>(now - record.lastTimestamp).count();
+    outFile << "    " << record.functionInfo->methodSignature << std::endl;
+    outFile << "        Assembly: " << record.functionInfo->assemblyName << std::endl;
+    outFile << "        Module  : " << record.functionInfo->moduleName << std::endl;
+    outFile << "        Age (ns): " << age << std::endl;
+    outFile << std::endl;
   }
 }
 

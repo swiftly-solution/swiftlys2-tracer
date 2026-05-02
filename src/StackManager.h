@@ -8,6 +8,7 @@
 
 #include <memory>
 #include <mutex>
+#include <atomic>
 #include <array>
 #include <chrono>
 #include <shared_mutex>
@@ -16,7 +17,6 @@
 #include <vector>
 #include "cor.h"
 #include "corprof.h"
-
 
 struct FunctionInfo
 {
@@ -35,25 +35,66 @@ struct FunctionInfo
   }
 };
 
+struct ArgumentStartsStorage
+{
+  static constexpr size_t kInlineCapacity = 8;
+  size_t count = 0;
+  std::array<UINT_PTR, kInlineCapacity> inlineStarts{};
+  std::vector<UINT_PTR> overflowStarts;
+
+  void Reset(size_t newCount)
+  {
+    count = newCount;
+    if (newCount > kInlineCapacity)
+      overflowStarts.resize(newCount);
+    else
+      overflowStarts.clear();
+  }
+
+  void Set(size_t idx, UINT_PTR value)
+  {
+    if (idx < kInlineCapacity)
+      inlineStarts[idx] = value;
+    else
+      overflowStarts[idx] = value;
+  }
+
+  UINT_PTR Get(size_t idx) const
+  {
+    if (idx < kInlineCapacity)
+      return inlineStarts[idx];
+    return overflowStarts[idx];
+  }
+
+  size_t Size() const
+  {
+    return count;
+  }
+
+  bool Empty() const
+  {
+    return count == 0;
+  }
+};
+
 struct StackFrame
 {
   FunctionID functionId;
-  const FunctionInfo* functionInfo = nullptr;
-  std::vector<std::string> argumentInfo;
-  
+  const FunctionInfo *functionInfo = nullptr;
+  ArgumentStartsStorage argumentStarts;
+
   void DebugPrint()
   {
-    // printf("FunctionId = %lld\n", functionId);
+    printf("FunctionId = %lld\n", functionId);
     if (functionInfo != nullptr)
     {
-      // functionInfo->DebugPrint();
+      functionInfo->DebugPrint();
     }
-    for (const auto& s : argumentInfo)
+    for (size_t i = 0; i < argumentStarts.Size(); i++)
     {
-      printf("%s\n", s.c_str());
+      printf("arg@0x%p\n", reinterpret_cast<void *>(argumentStarts.Get(i)));
     }
   }
-
 };
 
 class StackManager
@@ -62,6 +103,7 @@ private:
   std::unordered_map<FunctionID, std::unique_ptr<FunctionInfo>> m_functionInfos;
   mutable std::shared_mutex m_functionInfosMutex;
   ICorProfilerInfo15 *m_corProfilerInfo;
+  std::atomic<int> m_tracerLevel{1};
   struct TransitionRecord
   {
     const FunctionInfo *functionInfo = nullptr;
@@ -100,18 +142,21 @@ private:
 
   size_t BucketIndex(ThreadID tid) const;
   ThreadStackState &GetOrCreateThreadState(ThreadID tid);
+  ThreadStackState *GetCurrentThreadStateFast();
 
-  void GetArgumentInfo(FunctionIDOrClientID id, COR_PRF_ELT_INFO eltInfo, std::vector<std::string>& argumentInfo);
+  void GetArgumentInfo(FunctionIDOrClientID id, COR_PRF_ELT_INFO eltInfo, COR_PRF_FRAME_INFO frameInfo, ULONG argumentInfoSize, ArgumentStartsStorage &argumentStarts);
 
 public:
   FunctionInfo BuildFunctionInfo(FunctionID id, COR_PRF_FRAME_INFO frameInfo);
-  const FunctionInfo* GetOrBuildFunctionInfo(FunctionID id, COR_PRF_FRAME_INFO frameInfo);
+  const FunctionInfo *GetOrBuildFunctionInfo(FunctionID id, COR_PRF_FRAME_INFO frameInfo);
   void FunctionEnter(FunctionIDOrClientID id, COR_PRF_ELT_INFO eltInfo);
   void FunctionLeave(FunctionIDOrClientID id, COR_PRF_ELT_INFO eltInfo);
   void FunctionTailcall(FunctionIDOrClientID id, COR_PRF_ELT_INFO eltInfo);
   void OnUnmanagedToManaged(FunctionID functionId, COR_PRF_TRANSITION_REASON reason);
   void SetCorProfilerInfo(ICorProfilerInfo15 *corProfilerInfo);
   ICorProfilerInfo15 *GetCorProfilerInfo();
+  void SetTracerLevel(int level);
+  int GetTracerLevel() const;
 
   void OnThreadCreated(ThreadID threadId);
   void OnThreadDestroyed(ThreadID threadId);
@@ -133,4 +178,4 @@ public:
   void Dump(std::string path) const;
 };
 
-StackManager* GlobalStackManager();
+StackManager *GlobalStackManager();

@@ -3,6 +3,7 @@
 #include <string>
 #include <algorithm>
 #include <codecvt>
+#include <cstdint>
 #include <locale>
 #include <vector>
 #if defined(_WIN32)
@@ -63,40 +64,81 @@ inline void CopyWTrunc(WCHAR *dst, ULONG dstLen, const std::basic_string<WCHAR> 
   dst[n] = static_cast<WCHAR>(0);
 }
 
-inline void GetTypeName2(ICorProfilerInfo15 *pInfo, IMetaDataImport2 *pMetaDataImport, mdToken mdType, ULONG numGenericTypeArgs, ClassID *genericTypeArgs, WCHAR *pszName, ULONG bufferLen);
+inline void GetTypeName2(ICorProfilerInfo15 *pInfo, IMetaDataImport2 *pMetaDataImport, mdToken mdType, ULONG numGenericTypeArgs, ClassID *genericTypeArgs, WCHAR *pszName, ULONG bufferLen, ULONG recursionDepth = 0);
 
 inline void GetTypeName(ICorProfilerInfo15 *pInfo, IMetaDataImport2 *pMetaDataImport, ClassID classId, ModuleID moduleId, WCHAR *pszName, ULONG bufferLen)
 {
-  mdTypeDef mdType;
-  ClassID parentClassId;
+  if (pszName == nullptr || bufferLen == 0)
+    return;
+
+  pszName[0] = static_cast<WCHAR>(0);
+
+  if (pInfo == nullptr || classId == 0)
+    return;
+
+  mdTypeDef mdType = mdTypeDefNil;
+  ClassID parentClassId = 0;
   ULONG32 numGenericTypeArgs = 0;
 
-  pInfo->GetClassIDInfo2(classId, NULL, &mdType, &parentClassId, 0, &numGenericTypeArgs, NULL);
+  if (FAILED(pInfo->GetClassIDInfo2(classId, NULL, &mdType, &parentClassId, 0, &numGenericTypeArgs, NULL)) || mdType == mdTypeDefNil)
+    return;
 
   std::vector<ClassID> genericTypeArgs;
   if (numGenericTypeArgs)
+  {
     genericTypeArgs.resize(numGenericTypeArgs);
-  if (numGenericTypeArgs)
-    pInfo->GetClassIDInfo2(classId, NULL, &mdType, &parentClassId, numGenericTypeArgs, &numGenericTypeArgs, genericTypeArgs.data());
+    ULONG32 fetched = numGenericTypeArgs;
+    if (FAILED(pInfo->GetClassIDInfo2(classId, NULL, &mdType, &parentClassId, numGenericTypeArgs, &fetched, genericTypeArgs.data())))
+    {
+      genericTypeArgs.clear();
+      numGenericTypeArgs = 0;
+    }
+    else
+    {
+      numGenericTypeArgs = fetched;
+      genericTypeArgs.resize(numGenericTypeArgs);
+    }
+  }
 
   IMetaDataImport2 *metadataImport = pMetaDataImport;
   bool releaseMeta = false;
   if (metadataImport == NULL)
+  {
     releaseMeta = SUCCEEDED(pInfo->GetModuleMetaData(moduleId, ofRead, IID_IMetaDataImport2, reinterpret_cast<IUnknown **>(&metadataImport))) && metadataImport != nullptr;
+    if (!releaseMeta)
+      return;
+  }
 
   GetTypeName2(pInfo, metadataImport, mdType, numGenericTypeArgs, genericTypeArgs.empty() ? nullptr : genericTypeArgs.data(), pszName, bufferLen);
   if (releaseMeta)
     metadataImport->Release();
 }
 
-inline void GetTypeName2(ICorProfilerInfo15 *pInfo, IMetaDataImport2 *pMetaDataImport, mdToken mdType, ULONG numGenericTypeArgs, ClassID *genericTypeArgs, WCHAR *pszName, ULONG bufferLen)
+inline void GetTypeName2(ICorProfilerInfo15 *pInfo, IMetaDataImport2 *pMetaDataImport, mdToken mdType, ULONG numGenericTypeArgs, ClassID *genericTypeArgs, WCHAR *pszName, ULONG bufferLen, ULONG recursionDepth)
 {
-  ULONG length = bufferLen;
-  DWORD flags;
-  mdTypeDef mdBaseType;
+  if (pszName == nullptr || bufferLen == 0)
+    return;
+
   pszName[0] = static_cast<WCHAR>(0);
 
+  if (pMetaDataImport == nullptr || mdType == mdTokenNil)
+    return;
+
+  if (recursionDepth > 32)
+  {
+    pszName[0] = static_cast<WCHAR>(u'?');
+    if (bufferLen > 1)
+      pszName[1] = static_cast<WCHAR>(0);
+    return;
+  }
+
+  ULONG length = bufferLen;
+  DWORD flags = 0;
+  mdTypeDef mdBaseType = mdTypeDefNil;
+
   auto hr = pMetaDataImport->GetTypeDefProps(mdType, pszName, length, &length, &flags, &mdBaseType);
+  if (FAILED(hr))
+    return;
 
   if (!IsTdNested(flags) && numGenericTypeArgs == 0)
   {
@@ -106,14 +148,18 @@ inline void GetTypeName2(ICorProfilerInfo15 *pInfo, IMetaDataImport2 *pMetaDataI
   std::basic_string<WCHAR> out;
   if (IsTdNested(flags))
   {
-    mdToken mdEnclosingClass;
-    pMetaDataImport->GetNestedClassProps(mdType, &mdEnclosingClass);
-
-    std::vector<WCHAR> enclosing(bufferLen);
-    enclosing[0] = static_cast<WCHAR>(0);
-    GetTypeName2(pInfo, pMetaDataImport, mdEnclosingClass, numGenericTypeArgs, genericTypeArgs, enclosing.data(), bufferLen);
-    out += enclosing.data();
-    out += static_cast<WCHAR>(u'+');
+    mdToken mdEnclosingClass = mdTokenNil;
+    if (SUCCEEDED(pMetaDataImport->GetNestedClassProps(mdType, &mdEnclosingClass)) && mdEnclosingClass != mdTokenNil && mdEnclosingClass != mdType)
+    {
+      std::vector<WCHAR> enclosing(bufferLen);
+      enclosing[0] = static_cast<WCHAR>(0);
+      GetTypeName2(pInfo, pMetaDataImport, mdEnclosingClass, numGenericTypeArgs, genericTypeArgs, enclosing.data(), bufferLen, recursionDepth + 1);
+      if (enclosing[0] != static_cast<WCHAR>(0))
+      {
+        out += enclosing.data();
+        out += static_cast<WCHAR>(u'+');
+      }
+    }
   }
   if (numGenericTypeArgs > 0)
   {
@@ -124,12 +170,24 @@ inline void GetTypeName2(ICorProfilerInfo15 *pInfo, IMetaDataImport2 *pMetaDataI
 
     for (size_t currentGenericArg = 0; currentGenericArg < numGenericTypeArgs; currentGenericArg++)
     {
-      ClassID argClassId = genericTypeArgs[currentGenericArg];
-      ModuleID argModuleId;
-      pInfo->GetClassIDInfo2(argClassId, &argModuleId, NULL, 0, NULL, NULL, NULL);
+      ClassID argClassId = (genericTypeArgs != nullptr) ? genericTypeArgs[currentGenericArg] : 0;
       WCHAR argTypeName[260];
-      GetTypeName(pInfo, pMetaDataImport, argClassId, argModuleId, argTypeName, 260);
-      out += argTypeName;
+      argTypeName[0] = static_cast<WCHAR>(0);
+
+      if (pInfo != nullptr && argClassId != 0)
+      {
+        ModuleID argModuleId = 0;
+        if (SUCCEEDED(pInfo->GetClassIDInfo2(argClassId, &argModuleId, NULL, 0, NULL, NULL, NULL)) && argModuleId != 0)
+        {
+          // Always resolve generic arg names with metadata from its own module.
+          GetTypeName(pInfo, nullptr, argClassId, argModuleId, argTypeName, ARRAY_LEN(argTypeName));
+        }
+      }
+
+      if (argTypeName[0] != static_cast<WCHAR>(0))
+        out += argTypeName;
+      else
+        out += static_cast<WCHAR>(u'?');
 
       if (currentGenericArg < numGenericTypeArgs - 1)
       {

@@ -2,3 +2,4 @@ EXPORTS
     DllGetClassObject PRIVATE
     DllCanUnloadNow PRIVATE
     SW2TracerDump PRIVATE
+    SW2TracerSetTracerLevel PRIVATE
