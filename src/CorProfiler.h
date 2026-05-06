@@ -129,7 +129,7 @@ public:
   HRESULT STDMETHODCALLTYPE COMClassicVTableDestroyed(ClassID wrappedClassId, REFGUID implementedIID, void *pVTable) { return S_OK; };
   HRESULT STDMETHODCALLTYPE ExceptionCLRCatcherFound(void) { return S_OK; };
   HRESULT STDMETHODCALLTYPE ExceptionCLRCatcherExecute(void) { return S_OK; };
-  HRESULT STDMETHODCALLTYPE ThreadNameChanged(ThreadID threadId, ULONG cchName, WCHAR name[]) override;
+  HRESULT STDMETHODCALLTYPE ThreadNameChanged(ThreadID threadId, ULONG cchName, WCHAR name[]) override { return S_OK; };
   HRESULT STDMETHODCALLTYPE GarbageCollectionStarted(int cGenerations, BOOL generationCollected[], COR_PRF_GC_REASON reason) { return S_OK; };
   HRESULT STDMETHODCALLTYPE SurvivingReferences(ULONG cSurvivingObjectIDRanges, ObjectID objectIDRangeStart[], ULONG cObjectIDRangeLength[]) { return S_OK; };
   HRESULT STDMETHODCALLTYPE GarbageCollectionFinished(void) { return S_OK; };

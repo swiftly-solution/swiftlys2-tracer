@@ -110,13 +110,6 @@ HRESULT STDMETHODCALLTYPE CorProfiler::ThreadAssignedToOSThread(ThreadID managed
   return S_OK;
 }
 
-HRESULT STDMETHODCALLTYPE CorProfiler::ThreadNameChanged(ThreadID threadId, ULONG cchName, WCHAR name[])
-{
-  (void)cchName;
-  GlobalStackManager()->OnThreadNameChanged(threadId, name);
-  return S_OK;
-}
-
 HRESULT STDMETHODCALLTYPE CorProfiler::UnmanagedToManagedTransition(FunctionID functionId, COR_PRF_TRANSITION_REASON reason)
 {
   GlobalStackManager()->OnUnmanagedToManaged(functionId, reason);

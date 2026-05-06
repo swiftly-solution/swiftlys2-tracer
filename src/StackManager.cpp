@@ -485,13 +485,6 @@ void StackManager::OnThreadAssignedToOSThread(ThreadID managedThreadId, DWORD os
   state.osThreadId = osThreadId;
 }
 
-void StackManager::OnThreadNameChanged(ThreadID threadId, const WCHAR *name)
-{
-  auto &state = GetOrCreateThreadState(threadId);
-  std::lock_guard<std::mutex> guard(state.mutex);
-  state.name = WStrToUtf8(name);
-}
-
 std::vector<StackManager::ThreadStackSnapshot> StackManager::SnapshotAllStacks() const
 {
   std::vector<ThreadStackSnapshot> out;
@@ -512,7 +505,6 @@ std::vector<StackManager::ThreadStackSnapshot> StackManager::SnapshotAllStacks()
       {
         std::lock_guard<std::mutex> guard(st->mutex);
         snap.osThreadId = st->osThreadId;
-        snap.nameUtf8 = st->name;
         snap.desyncNotFound = st->desyncNotFound;
         snap.desyncFoundNotTop = st->desyncFoundNotTop;
         snap.tailcallPops = st->tailcallPops;
@@ -538,7 +530,7 @@ void StackManager::Dump(std::string path) const
       const ThreadStackState *st = kv.second.get();
       if (st == nullptr)
         continue;
-      outFile << "Thread " << tid << ": " << st->name.c_str() << std::endl;
+      outFile << "Thread " << tid << ":" << std::endl;
       for (auto it = st->frames.rbegin(); it != st->frames.rend(); ++it)
       {
         const auto &frame = *it;

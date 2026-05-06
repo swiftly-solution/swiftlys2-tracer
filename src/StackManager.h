@@ -78,7 +78,6 @@ private:
     uint32_t desyncFoundNotTop = 0;
     uint32_t tailcallPops = 0;
     DWORD osThreadId = 0;
-    std::string name;
 
     void EnsureInit()
     {
@@ -116,13 +115,10 @@ public:
   void OnThreadCreated(ThreadID threadId);
   void OnThreadDestroyed(ThreadID threadId);
   void OnThreadAssignedToOSThread(ThreadID managedThreadId, DWORD osThreadId);
-  void OnThreadNameChanged(ThreadID threadId, const WCHAR *name);
-
   struct ThreadStackSnapshot
   {
     ThreadID threadId = 0;
     DWORD osThreadId = 0;
-    std::string nameUtf8;
     uint32_t desyncNotFound = 0;
     uint32_t desyncFoundNotTop = 0;
     uint32_t tailcallPops = 0;
