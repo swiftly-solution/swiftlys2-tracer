@@ -12,6 +12,7 @@
 #include "corhlpr.h"
 #include "ProfilerPal.h"
 
+
 PROFILER_STUB EnterStub(FunctionIDOrClientID functionId, COR_PRF_ELT_INFO eltInfo)
 {
   GlobalStackManager()->FunctionEnter(functionId, eltInfo);
@@ -56,8 +57,6 @@ HRESULT STDMETHODCALLTYPE CorProfiler::Initialize(IUnknown *pICorProfilerInfoUnk
 
   GlobalStackManager()->SetCorProfilerInfo(this->corProfilerInfo);
 
-  const int tracerLevel = GlobalStackManager()->GetTracerLevel();
-
   DWORD eventMask =
       COR_PRF_MONITOR_ENTERLEAVE |
       COR_PRF_MONITOR_THREADS |
@@ -65,8 +64,6 @@ HRESULT STDMETHODCALLTYPE CorProfiler::Initialize(IUnknown *pICorProfilerInfoUnk
       COR_PRF_ENABLE_FUNCTION_ARGS |
       COR_PRF_ENABLE_FUNCTION_RETVAL |
       COR_PRF_ENABLE_FRAME_INFO;
-
-  LOG("Tracer level: %d (argument capture: %s)", tracerLevel, tracerLevel == 2 ? "enabled" : "disabled");
 
   auto hr = this->corProfilerInfo->SetEventMask(eventMask);
   if (hr != S_OK)
