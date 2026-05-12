@@ -63,7 +63,7 @@ inline void CopyWTrunc(WCHAR *dst, ULONG dstLen, const std::basic_string<WCHAR> 
   dst[n] = static_cast<WCHAR>(0);
 }
 
-inline void GetTypeName2(ICorProfilerInfo15 *pInfo, IMetaDataImport2 *pMetaDataImport, mdToken mdType, ULONG numGenericTypeArgs, ClassID *genericTypeArgs, WCHAR *pszName, ULONG bufferLen);
+inline void GetTypeName2(ICorProfilerInfo15 *pInfo, IMetaDataImport2 *pMetaDataImport, mdToken mdType, ULONG numGenericTypeArgs, ClassID *genericTypeArgs, WCHAR *pszName, ULONG bufferLen, ULONG depth);
 
 inline void GetTypeName(ICorProfilerInfo15 *pInfo, IMetaDataImport2 *pMetaDataImport, ClassID classId, ModuleID moduleId, WCHAR *pszName, ULONG bufferLen)
 {
@@ -84,13 +84,19 @@ inline void GetTypeName(ICorProfilerInfo15 *pInfo, IMetaDataImport2 *pMetaDataIm
   if (metadataImport == NULL)
     releaseMeta = SUCCEEDED(pInfo->GetModuleMetaData(moduleId, ofRead, IID_IMetaDataImport2, reinterpret_cast<IUnknown **>(&metadataImport))) && metadataImport != nullptr;
 
-  GetTypeName2(pInfo, metadataImport, mdType, numGenericTypeArgs, genericTypeArgs.empty() ? nullptr : genericTypeArgs.data(), pszName, bufferLen);
+  GetTypeName2(pInfo, metadataImport, mdType, numGenericTypeArgs, genericTypeArgs.empty() ? nullptr : genericTypeArgs.data(), pszName, bufferLen, 0);
   if (releaseMeta)
     metadataImport->Release();
 }
 
-inline void GetTypeName2(ICorProfilerInfo15 *pInfo, IMetaDataImport2 *pMetaDataImport, mdToken mdType, ULONG numGenericTypeArgs, ClassID *genericTypeArgs, WCHAR *pszName, ULONG bufferLen)
+inline void GetTypeName2(ICorProfilerInfo15 *pInfo, IMetaDataImport2 *pMetaDataImport, mdToken mdType, ULONG numGenericTypeArgs, ClassID *genericTypeArgs, WCHAR *pszName, ULONG bufferLen, ULONG depth)
 {
+  if (depth >= 10)
+  {
+    pszName[0] = static_cast<WCHAR>(0);
+    return;
+  }
+
   ULONG length = bufferLen;
   DWORD flags;
   mdTypeDef mdBaseType;
@@ -111,7 +117,7 @@ inline void GetTypeName2(ICorProfilerInfo15 *pInfo, IMetaDataImport2 *pMetaDataI
 
     std::vector<WCHAR> enclosing(bufferLen);
     enclosing[0] = static_cast<WCHAR>(0);
-    GetTypeName2(pInfo, pMetaDataImport, mdEnclosingClass, numGenericTypeArgs, genericTypeArgs, enclosing.data(), bufferLen);
+    GetTypeName2(pInfo, pMetaDataImport, mdEnclosingClass, numGenericTypeArgs, genericTypeArgs, enclosing.data(), bufferLen, depth + 1);
     out += enclosing.data();
     out += static_cast<WCHAR>(u'+');
   }
@@ -161,7 +167,7 @@ inline std::string GetTypeNameFromTypeToken(IMetaDataImport2 *pMetaDataImport, m
     DWORD flags = 0;
     mdTypeDef mdBaseType = 0;
     pMetaDataImport->GetTypeDefProps(tkType, name, bufferLen, nullptr, &flags, &mdBaseType);
-    GetTypeName2(nullptr, pMetaDataImport, tkType, 0, nullptr, name, bufferLen);
+    GetTypeName2(nullptr, pMetaDataImport, tkType, 0, nullptr, name, bufferLen, 0);
     FixGenericSyntax(name);
     return WStrToUtf8(name);
   }
